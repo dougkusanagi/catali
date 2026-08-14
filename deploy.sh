@@ -51,6 +51,10 @@ vp build
 
 echo "Instalando unidade systemd..."
 BUN_BIN="$(command -v bun)"
+if [[ "${BUN_BIN}" != "/usr/local/bin/bun" ]]; then
+    install -m 0755 "${BUN_BIN}" /usr/local/bin/bun
+    BUN_BIN="/usr/local/bin/bun"
+fi
 sed "s|__BUN_BIN__|${BUN_BIN}|g" deploy/promo-pdf.service > "/etc/systemd/system/${SERVICE_NAME}.service"
 systemctl daemon-reload
 systemctl enable "${SERVICE_NAME}.service"
