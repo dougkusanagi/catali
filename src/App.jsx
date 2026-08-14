@@ -42,6 +42,12 @@ function formatPrice(cents) {
   return money.format((Number(cents) || 0) / 100);
 }
 
+function createDraftId() {
+  return typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID()
+    : `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 const getRadianAngle = (degree) => (degree * Math.PI) / 180;
 
 function rotatedCanvasSize(width, height, rotation) {
@@ -497,7 +503,7 @@ function App() {
       products: [
         ...current.products,
         {
-          id: `draft-${crypto.randomUUID()}`,
+          id: createDraftId(),
           imagePath: data.path,
           wholesalePriceCents: 0,
           position: current.products.length,

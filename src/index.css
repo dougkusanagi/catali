@@ -811,6 +811,22 @@ button {
     grid-column: auto;
   }
 }
+@media (max-width: 700px) {
+  .products-heading {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 14px;
+  }
+  .add-actions {
+    width: 100%;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .small-button {
+    width: 100%;
+  }
+}
 @media (max-width: 590px) {
   .app-header {
     align-items: center;
