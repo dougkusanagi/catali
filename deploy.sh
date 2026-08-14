@@ -44,6 +44,8 @@ bunx --bun prisma migrate deploy
 bunx --bun prisma generate
 
 echo "Instalando Chromium para geração de PDF..."
+echo "Instalando dependências nativas do Chromium..."
+/usr/local/bin/bun x playwright install-deps chromium
 install -d -o www-data -g www-data -m 0755 /var/www/.cache
 runuser -u www-data -- env HOME=/var/www PLAYWRIGHT_BROWSERS_PATH=/var/www/.cache/ms-playwright /usr/local/bin/bun x playwright install chromium
 
