@@ -1,7 +1,7 @@
 promo-pdf.cronicasjeans.com.br {
     encode gzip
 
-    @api path /api/*
+    @api path /api*
     handle @api {
         root * __APP_ROOT__/php
         rewrite * /index.php?route={http.request.uri.path}
