@@ -6,6 +6,8 @@ APP_ROOT="${APP_ROOT:-/var/www/promo-pdf}"
 RELEASE_DIR="${APP_ROOT}/current"
 SERVICE_NAME="promo-pdf"
 
+export PATH="/root/.vite-plus/bin:/root/.bun/bin:/usr/local/bin:${PATH}"
+
 if [[ "${EUID}" -ne 0 ]]; then
     echo "Execute este script como root."
     exit 1
