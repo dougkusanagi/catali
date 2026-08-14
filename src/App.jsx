@@ -796,8 +796,8 @@ function App() {
             {promotion.products.length === 0 && (
               <button className="empty-products" onClick={() => fileInputRef.current.click()}>
                 <ImagePlus size={28} />
-                <strong>Adicione o primeiro produto</strong>
-                <span>Foto quadrada e bem iluminada funciona melhor.</span>
+                <strong>Adicionar primeira foto</strong>
+                <span>Toque para escolher uma imagem do produto.</span>
               </button>
             )}
           </div>

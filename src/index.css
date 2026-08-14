@@ -812,6 +812,9 @@ button {
   }
 }
 @media (max-width: 700px) {
+  .drop-zone {
+    display: none;
+  }
   .products-heading {
     display: grid;
     grid-template-columns: 1fr;
@@ -825,6 +828,11 @@ button {
   }
   .small-button {
     width: 100%;
+  }
+}
+@media (min-width: 701px) {
+  .empty-products {
+    display: none;
   }
 }
 @media (max-width: 590px) {
