@@ -414,16 +414,63 @@ button {
   font-size: 13px;
   color: #83776a;
 }
+.preview-meta {
+  display: flex !important;
+  align-items: center;
+  gap: 12px;
+}
+.preview-zoom-controls {
+  display: flex !important;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid #d1c8bc;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.42);
+}
+.preview-zoom-controls button {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #51483e;
+}
+.preview-zoom-controls button:hover:not(:disabled) {
+  background: white;
+  color: var(--red);
+}
+.preview-zoom-controls button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.preview-zoom-controls b {
+  min-width: 38px;
+  text-align: center;
+  font-size: 12px;
+  color: #6b6054;
+}
 .preview-frame {
   box-shadow: 0 20px 55px rgba(42, 34, 25, 0.18);
+  overflow: hidden;
+  background: #dcd5ca;
 }
-.preview-frame .promo-document {
-  gap: 22px;
-}
-.preview-frame .promo-page {
+.preview-viewport {
   width: 100%;
-  height: auto;
-  aspect-ratio: 210 / 297;
+  overflow: auto;
+  padding: 0 0 5px;
+}
+.preview-stage {
+  position: relative;
+  margin: 0 auto;
+}
+.preview-document-surface {
+  transform-origin: top left;
+}
+.preview-document-surface .promo-document {
+  gap: 22px;
 }
 .promo-document {
   display: grid;
@@ -643,12 +690,24 @@ button {
   font-size: 23px;
   text-transform: uppercase;
 }
+.editor-cancel {
+  border: 0;
+  background: transparent;
+  color: #77736c;
+  font-size: 14px;
+  font-weight: 600;
+}
+.editor-cancel:hover {
+  color: var(--red);
+}
 .crop-stage {
-  min-height: 360px;
-  max-height: 52vh;
-  overflow: auto;
-  display: grid;
-  place-items: center;
+  position: relative;
+  width: min(100%, 480px);
+  height: auto;
+  aspect-ratio: 1;
+  margin: 20px auto 0;
+  overflow: hidden;
+  border-radius: 16px;
   background: #171411;
   background-image:
     linear-gradient(45deg, #24201d 25%, transparent 25%),
@@ -661,45 +720,56 @@ button {
     0 12px,
     12px -12px,
     -12px 0;
+  touch-action: none;
 }
-.crop-stage .ReactCrop {
-  max-height: 52vh;
-  overflow: auto;
-}
-.crop-stage img {
-  display: block;
-  max-height: none;
+.crop-stage .crop-area {
+  border: 2px solid white;
+  border-radius: 16px;
 }
 .editor-controls {
-  margin: 18px 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-}
-.zoom-control {
-  display: flex;
-  align-items: center;
+  margin: 18px 0 0;
+  display: grid;
   gap: 12px;
-  flex: 1;
+}
+.gesture-hint {
+  margin: 0;
+  text-align: center;
+  color: #8d887f;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.crop-tools {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.crop-tools button,
+.reset-crop {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #ddd9d0;
+  border-radius: 12px;
+  background: transparent;
+  color: #68645c;
+  font-size: 12px;
   font-weight: 700;
 }
-.zoom-control input {
-  accent-color: var(--red);
+.crop-tools button:hover,
+.reset-crop:hover {
+  border-color: var(--red);
+  color: var(--red);
+}
+.reset-crop {
   width: 100%;
-}
-.transform-buttons {
-  display: flex;
-  gap: 7px;
-}
-.transform-buttons button {
-  width: 39px;
-  height: 39px;
-  font-weight: 800;
-  font-size: 20px;
 }
 .modal-actions {
   justify-content: flex-end;
+  margin-top: 20px;
 }
 .spin {
   animation: spin 0.8s linear infinite;
@@ -765,14 +835,19 @@ button {
     width: 16px;
   }
   .products-heading {
-    align-items: flex-end;
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 14px;
   }
   .add-actions {
     flex-direction: column;
+    width: 100%;
     gap: 7px;
   }
   .small-button {
     min-height: 44px;
+    width: 100%;
     justify-content: center;
   }
   .product-row {
@@ -799,8 +874,13 @@ button {
     align-items: stretch;
     flex-direction: column;
   }
-  .preview-frame .promo-page {
-    min-width: 0;
+  .preview-heading {
+    align-items: flex-start;
+  }
+  .preview-meta {
+    align-items: flex-end;
+    flex-direction: column;
+    gap: 6px;
   }
   .preview-panel {
     padding-inline: 12px;
@@ -812,7 +892,11 @@ button {
     padding: 18px;
   }
   .crop-stage {
-    min-height: 290px;
+    width: 100%;
+    height: auto;
+  }
+  .crop-tools {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .modal-actions .button {
     flex: 1;

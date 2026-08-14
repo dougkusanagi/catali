@@ -1,15 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import ReactCrop, { centerCrop, makeAspectCrop } from "react-image-crop";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Cropper from "react-easy-crop";
 import { useDropzone } from "react-dropzone";
 import { NumericFormat } from "react-number-format";
-import "react-image-crop/dist/ReactCrop.css";
 import {
   ArrowDown,
   ArrowUp,
   Camera,
   Check,
-  Crop,
   Download,
+  FlipHorizontal2,
+  FlipVertical2,
   ImagePlus,
   LoaderCircle,
   RotateCcw,
@@ -17,6 +17,9 @@ import {
   Save,
   Sparkles,
   Trash2,
+  Undo2,
+  ZoomIn,
+  ZoomOut,
   X,
 } from "lucide-react";
 import "./index.css";
@@ -39,75 +42,146 @@ function formatPrice(cents) {
   return money.format((Number(cents) || 0) / 100);
 }
 
-function centerAspectCrop(width, height) {
-  return centerCrop(makeAspectCrop({ unit: "%", width: 90 }, 1, width, height), width, height);
+const getRadianAngle = (degree) => (degree * Math.PI) / 180;
+
+function rotatedCanvasSize(width, height, rotation) {
+  const angle = getRadianAngle(rotation);
+  return {
+    width: Math.abs(Math.cos(angle) * width) + Math.abs(Math.sin(angle) * height),
+    height: Math.abs(Math.sin(angle) * width) + Math.abs(Math.cos(angle) * height),
+  };
 }
 
-async function transformImage(source, operation) {
-  const image = new Image();
-  image.src = source;
-  await image.decode();
-  const rotate = operation === "left" || operation === "right";
-  const canvas = document.createElement("canvas");
-  canvas.width = rotate ? image.naturalHeight : image.naturalWidth;
-  canvas.height = rotate ? image.naturalWidth : image.naturalHeight;
-  const context = canvas.getContext("2d");
-  context.translate(canvas.width / 2, canvas.height / 2);
-  if (operation === "left") context.rotate(-Math.PI / 2);
-  if (operation === "right") context.rotate(Math.PI / 2);
-  if (operation === "flipX") context.scale(-1, 1);
-  if (operation === "flipY") context.scale(1, -1);
-  context.drawImage(image, -image.naturalWidth / 2, -image.naturalHeight / 2);
-  return canvas.toDataURL("image/jpeg", 0.92);
+function minimumCropZoom(mediaSize, cropSize, rotation) {
+  if (!mediaSize || !cropSize || mediaSize.width <= 0 || mediaSize.height <= 0) return 1;
+  const rotated = rotatedCanvasSize(mediaSize.width, mediaSize.height, rotation);
+  return Math.max(1, cropSize.width / rotated.width, cropSize.height / rotated.height);
 }
 
-async function cropImage(image, crop) {
-  const scaleX = image.naturalWidth / image.width;
-  const scaleY = image.naturalHeight / image.height;
-  const canvas = document.createElement("canvas");
-  const width = crop?.width ? Math.round(crop.width * scaleX) : image.naturalWidth;
-  const height = crop?.height ? Math.round(crop.height * scaleY) : image.naturalHeight;
-  canvas.width = Math.min(width, 1400);
-  canvas.height = Math.min(height, 1400);
-  const context = canvas.getContext("2d");
-  context.imageSmoothingQuality = "high";
-  context.drawImage(
-    image,
-    (crop?.x || 0) * scaleX,
-    (crop?.y || 0) * scaleY,
-    width,
-    height,
-    0,
-    0,
-    canvas.width,
-    canvas.height,
-  );
-  return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.88));
+function createCroppedPhoto(source, pixelCrop, rotation, flip) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const rotated = rotatedCanvasSize(image.naturalWidth, image.naturalHeight, rotation);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(rotated.width);
+      canvas.height = Math.round(rotated.height);
+      const context = canvas.getContext("2d");
+      if (!context) {
+        reject(new Error("Não foi possível preparar a imagem."));
+        return;
+      }
+      context.translate(canvas.width / 2, canvas.height / 2);
+      context.rotate(getRadianAngle(rotation));
+      context.scale(flip.horizontal ? -1 : 1, flip.vertical ? -1 : 1);
+      context.translate(-image.naturalWidth / 2, -image.naturalHeight / 2);
+      context.drawImage(image, 0, 0);
+
+      const croppedCanvas = document.createElement("canvas");
+      croppedCanvas.width = Math.round(pixelCrop.width);
+      croppedCanvas.height = Math.round(pixelCrop.height);
+      const croppedContext = croppedCanvas.getContext("2d");
+      if (!croppedContext) {
+        reject(new Error("Não foi possível recortar a imagem."));
+        return;
+      }
+      croppedContext.drawImage(
+        canvas,
+        Math.round(pixelCrop.x),
+        Math.round(pixelCrop.y),
+        croppedCanvas.width,
+        croppedCanvas.height,
+        0,
+        0,
+        croppedCanvas.width,
+        croppedCanvas.height,
+      );
+      croppedCanvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error("Não foi possível exportar a imagem."));
+            return;
+          }
+          resolve(new File([blob], "produto.jpg", { type: "image/jpeg" }));
+        },
+        "image/jpeg",
+        0.9,
+      );
+    };
+    image.onerror = () => reject(new Error("Não foi possível carregar a imagem."));
+    image.src = source;
+  });
 }
 
-function ImageEditor({ source, onCancel, onDone }) {
-  const imageRef = useRef(null);
-  const [crop, setCrop] = useState();
-  const [completedCrop, setCompletedCrop] = useState();
+function ImageEditor({ source, onCancel, onDone, onRetake }) {
+  const cropContainerRef = useRef(null);
+  const mediaSizeRef = useRef(null);
+  const cropSizeRef = useRef(null);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
-  const [workingSource, setWorkingSource] = useState(source);
+  const [rotation, setRotation] = useState(0);
+  const [flip, setFlip] = useState({ horizontal: false, vertical: false });
+  const [mediaSize, setMediaSize] = useState(null);
+  const [cropContainerSize, setCropContainerSize] = useState(null);
+  const [cropSize, setCropSize] = useState(null);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
   const [busy, setBusy] = useState(false);
+  const minZoom = useMemo(
+    () => minimumCropZoom(mediaSize, cropSize, rotation),
+    [mediaSize, cropSize, rotation],
+  );
 
-  async function applyTransform(operation) {
-    setBusy(true);
-    const nextSource = await transformImage(workingSource, operation);
-    setWorkingSource(nextSource);
-    setZoom(1);
-    setCrop(undefined);
-    setCompletedCrop(undefined);
-    setBusy(false);
+  useEffect(() => {
+    const container = cropContainerRef.current;
+    if (!container) return undefined;
+    const updateSize = () =>
+      setCropContainerSize({ width: container.clientWidth, height: container.clientHeight });
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  function handleMediaLoaded(nextMediaSize) {
+    mediaSizeRef.current = nextMediaSize;
+    setMediaSize(nextMediaSize);
+    setZoom((current) =>
+      Math.max(current, minimumCropZoom(nextMediaSize, cropSizeRef.current, rotation)),
+    );
+  }
+
+  function handleCropSizeChange(nextCropSize) {
+    cropSizeRef.current = nextCropSize;
+    setCropSize(nextCropSize);
+    setZoom((current) =>
+      Math.max(current, minimumCropZoom(mediaSizeRef.current, nextCropSize, rotation)),
+    );
+  }
+
+  function rotateCrop(degrees) {
+    const nextRotation = rotation + degrees;
+    setRotation(nextRotation);
+    setZoom((current) =>
+      Math.max(current, minimumCropZoom(mediaSizeRef.current, cropSizeRef.current, nextRotation)),
+    );
+  }
+
+  function resetCrop() {
+    setCrop({ x: 0, y: 0 });
+    setRotation(0);
+    setZoom(minimumCropZoom(mediaSizeRef.current, cropSizeRef.current, 0));
+    setFlip({ horizontal: false, vertical: false });
+    setCroppedAreaPixels(null);
   }
 
   async function finish() {
+    if (!croppedAreaPixels) return;
     setBusy(true);
-    const blob = await cropImage(imageRef.current, completedCrop);
-    await onDone(new File([blob], "produto.jpg", { type: "image/jpeg" }));
-    setBusy(false);
+    try {
+      await onDone(await createCroppedPhoto(source, croppedAreaPixels, rotation, flip));
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -115,64 +189,71 @@ function ImageEditor({ source, onCancel, onDone }) {
       <section className="image-editor">
         <div className="editor-title">
           <div>
-            <span className="eyebrow">AJUSTE DA FOTO</span>
-            <h2>Deixe o produto irresistível</h2>
+            <span className="eyebrow">AJUSTAR FOTO</span>
+            <h2>Ajuste a imagem</h2>
           </div>
-          <button className="icon-button" onClick={onCancel} aria-label="Fechar">
-            <X size={20} />
-          </button>
-        </div>
-        <div className="crop-stage">
-          <ReactCrop
-            crop={crop}
-            onChange={(_, percent) => setCrop(percent)}
-            onComplete={(pixelCrop) => setCompletedCrop(pixelCrop)}
-            aspect={1}
-          >
-            <img
-              ref={imageRef}
-              src={workingSource}
-              alt="Produto para recortar"
-              style={{ width: `${zoom * 100}%`, maxWidth: "none" }}
-              onLoad={(event) =>
-                setCrop(centerAspectCrop(event.currentTarget.width, event.currentTarget.height))
-              }
-            />
-          </ReactCrop>
-        </div>
-        <div className="editor-controls">
-          <label className="zoom-control">
-            <span>Zoom</span>
-            <input
-              type="range"
-              min="1"
-              max="2.5"
-              step="0.05"
-              value={zoom}
-              onChange={(event) => setZoom(Number(event.target.value))}
-            />
-          </label>
-          <div className="transform-buttons">
-            <button onClick={() => applyTransform("left")} title="Girar à esquerda">
-              <RotateCcw size={19} />
-            </button>
-            <button onClick={() => applyTransform("right")} title="Girar à direita">
-              <RotateCw size={19} />
-            </button>
-            <button onClick={() => applyTransform("flipX")} title="Espelhar horizontalmente">
-              ↔
-            </button>
-            <button onClick={() => applyTransform("flipY")} title="Espelhar verticalmente">
-              ↕
-            </button>
-          </div>
-        </div>
-        <div className="modal-actions">
-          <button className="button ghost" onClick={onCancel}>
+          <button className="editor-cancel" onClick={onCancel}>
             Cancelar
           </button>
-          <button className="button primary" onClick={finish} disabled={busy}>
-            {busy ? <LoaderCircle className="spin" size={18} /> : <Crop size={18} />} Usar imagem
+        </div>
+        <div ref={cropContainerRef} className="crop-stage">
+          <Cropper
+            image={source}
+            crop={crop}
+            zoom={zoom}
+            rotation={rotation}
+            aspect={1}
+            cropSize={cropContainerSize ?? undefined}
+            minZoom={minZoom}
+            maxZoom={Number.POSITIVE_INFINITY}
+            objectFit="contain"
+            zoomWithScroll={false}
+            showGrid
+            roundCropAreaPixels
+            onCropChange={setCrop}
+            onCropComplete={(_, nextPixels) => setCroppedAreaPixels(nextPixels)}
+            onZoomChange={setZoom}
+            onMediaLoaded={handleMediaLoaded}
+            onCropSizeChange={handleCropSizeChange}
+            transform={`translate(${crop.x}px, ${crop.y}px) rotate(${rotation}deg) scale(${zoom}) scaleX(${flip.horizontal ? -1 : 1}) scaleY(${flip.vertical ? -1 : 1})`}
+            classes={{ cropAreaClassName: "crop-area" }}
+            cropperProps={{ "aria-label": "Área de recorte da foto" }}
+          />
+        </div>
+        <div className="editor-controls">
+          <p className="gesture-hint">Use dois dedos para aproximar ou afastar</p>
+          <div className="crop-tools">
+            <button onClick={() => rotateCrop(-90)} title="Girar para a esquerda">
+              <RotateCcw size={17} /> <span>Esquerda</span>
+            </button>
+            <button onClick={() => rotateCrop(90)} title="Girar para a direita">
+              <RotateCw size={17} /> <span>Direita</span>
+            </button>
+            <button
+              onClick={() =>
+                setFlip((current) => ({ ...current, horizontal: !current.horizontal }))
+              }
+              title="Inverter horizontalmente"
+            >
+              <FlipHorizontal2 size={17} /> <span>Horizontal</span>
+            </button>
+            <button
+              onClick={() => setFlip((current) => ({ ...current, vertical: !current.vertical }))}
+              title="Inverter verticalmente"
+            >
+              <FlipVertical2 size={17} /> <span>Vertical</span>
+            </button>
+          </div>
+          <button className="reset-crop" onClick={resetCrop}>
+            <Undo2 size={17} /> Restaurar
+          </button>
+        </div>
+        <div className="modal-actions">
+          <button className="button ghost" onClick={onRetake}>
+            Tirar outra foto
+          </button>
+          <button className="button primary" onClick={finish} disabled={busy || !croppedAreaPixels}>
+            {busy ? <LoaderCircle className="spin" size={18} /> : null} Cortar e Salvar
           </button>
         </div>
       </section>
@@ -253,6 +334,86 @@ function PromoDocument({ promotion }) {
         />
       ))}
     </div>
+  );
+}
+
+const A4_WIDTH_PX = (210 / 25.4) * 96;
+const A4_HEIGHT_PX = (297 / 25.4) * 96;
+const PREVIEW_PAGE_GAP = 22;
+
+function PromoPreview({ promotion }) {
+  const viewportRef = useRef(null);
+  const [viewportWidth, setViewportWidth] = useState(0);
+  const [previewZoom, setPreviewZoom] = useState(1);
+  const pageCount = promotion.products.length
+    ? Math.ceil(promotion.products.length / PRODUCTS_PER_PAGE)
+    : 1;
+  const naturalHeight = pageCount * A4_HEIGHT_PX + Math.max(0, pageCount - 1) * PREVIEW_PAGE_GAP;
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return undefined;
+    const updateWidth = () => setViewportWidth(viewport.clientWidth);
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, []);
+
+  const fitScale = viewportWidth
+    ? Math.min(1, Math.max(0.2, (viewportWidth - 2) / A4_WIDTH_PX))
+    : 1;
+  const scale = fitScale * previewZoom;
+
+  return (
+    <aside className="preview-panel">
+      <div className="preview-heading">
+        <div>
+          <span>PRÉVIA AO VIVO</span>
+          <strong>A4 • PDF</strong>
+        </div>
+        <div className="preview-meta">
+          <i>{pageCount > 1 ? `${pageCount} páginas` : "1 página"}</i>
+          <div className="preview-zoom-controls" aria-label="Zoom da prévia">
+            <button
+              type="button"
+              onClick={() => setPreviewZoom((current) => Math.max(1, current - 0.25))}
+              disabled={previewZoom <= 1}
+              aria-label="Reduzir prévia"
+            >
+              <ZoomOut size={15} />
+            </button>
+            <b>{Math.round(previewZoom * 100)}%</b>
+            <button
+              type="button"
+              onClick={() => setPreviewZoom((current) => Math.min(2.5, current + 0.25))}
+              disabled={previewZoom >= 2.5}
+              aria-label="Ampliar prévia"
+            >
+              <ZoomIn size={15} />
+            </button>
+          </div>
+        </div>
+      </div>
+      <div className="preview-frame">
+        <div ref={viewportRef} className="preview-viewport">
+          <div
+            className="preview-stage"
+            style={{ width: A4_WIDTH_PX * scale, height: naturalHeight * scale }}
+          >
+            <div
+              className="preview-document-surface"
+              style={{
+                width: A4_WIDTH_PX,
+                transform: `scale(${scale})`,
+              }}
+            >
+              <PromoDocument promotion={promotion} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
   );
 }
 
@@ -643,28 +804,17 @@ function App() {
             </div>
           )}
         </section>
-        <aside className="preview-panel">
-          <div className="preview-heading">
-            <div>
-              <span>PRÉVIA AO VIVO</span>
-              <strong>A4 • PDF</strong>
-            </div>
-            <i>
-              {promotion.products.length > PRODUCTS_PER_PAGE
-                ? `${Math.ceil(promotion.products.length / PRODUCTS_PER_PAGE)} páginas`
-                : "1 página"}
-            </i>
-          </div>
-          <div className="preview-frame">
-            <PromoDocument promotion={promotion} />
-          </div>
-        </aside>
+        <PromoPreview promotion={promotion} />
       </div>
       {editorSource && (
         <ImageEditor
           source={editorSource}
           onCancel={() => setEditorSource(null)}
           onDone={uploadEditedImage}
+          onRetake={() => {
+            setEditorSource(null);
+            window.setTimeout(() => cameraInputRef.current?.click(), 0);
+          }}
         />
       )}
     </main>

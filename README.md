@@ -7,6 +7,10 @@ com até 6 produtos por página; acima disso, novas páginas são criadas automa
 produtos por promoção). É possível escolher uma imagem pela galeria, tirar uma foto ou arrastá-la para
 a área de produtos.
 
+No editor de imagem, o zoom é feito com a pinça no celular (ou com o gesto equivalente no trackpad),
+sem um limite artificial. A prévia A4 se ajusta à largura disponível e pode ser ampliada pelos controles
+de zoom para conferir detalhes mantendo a mesma proporção do PDF final.
+
 ## Executar
 
 ```bash
