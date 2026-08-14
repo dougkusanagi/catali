@@ -32,8 +32,19 @@ vp install --frozen-lockfile
 echo "Aplicando banco e gerando Prisma Client..."
 mkdir -p storage/uploads storage/temp
 chown -R www-data:www-data storage
+if [[ ! -f .env ]]; then
+    cat > .env <<'EOF'
+DATABASE_URL="file:./storage/database.db"
+PORT=3001
+APP_URL="http://127.0.0.1:3001"
+EOF
+    chmod 0640 .env
+fi
 bunx --bun prisma migrate deploy
 bunx --bun prisma generate
+
+echo "Instalando Chromium para geração de PDF..."
+bunx playwright install chromium
 
 echo "Compilando assets com Vite+..."
 vp build
@@ -46,8 +57,8 @@ systemctl enable "${SERVICE_NAME}.service"
 systemctl restart "${SERVICE_NAME}.service"
 
 echo "Configurando Caddy..."
-install -d -m 0755 /etc/caddy
-install -m 0644 deploy/Caddyfile /etc/caddy/Caddyfile
+install -d -m 0755 /etc/caddy/sites.d
+install -m 0644 deploy/Caddyfile /etc/caddy/sites.d/promo-pdf.caddy
 systemctl reload caddy 2>/dev/null || systemctl restart caddy
 
 echo "Deploy concluído em ${RELEASE_DIR}."
