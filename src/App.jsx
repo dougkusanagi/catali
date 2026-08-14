@@ -224,6 +224,7 @@ function ImageEditor({ source, onCancel, onDone, onRetake }) {
             maxZoom={5}
             objectFit="contain"
             zoomWithScroll
+            zoomSpeed={0.35}
             showGrid
             roundCropAreaPixels
             onCropChange={setCrop}
