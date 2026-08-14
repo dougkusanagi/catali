@@ -77,7 +77,7 @@ fi
 echo "Configurando Caddy..."
 install -d -m 0755 /etc/caddy/sites.d
 sed \
-    -e "s|__APP_ROOT__|${APP_ROOT}|g" \
+    -e "s|__APP_ROOT__|${RELEASE_DIR}|g" \
     -e "s|__PHP_FPM_SOCK__|${PHP_FPM_SOCK}|g" \
     deploy/Caddyfile > /etc/caddy/sites.d/promo-pdf.caddy
 chmod 0644 /etc/caddy/sites.d/promo-pdf.caddy
