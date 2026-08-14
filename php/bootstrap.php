@@ -65,6 +65,7 @@ function ensure_schema(PDO $database): void
             "note" TEXT NOT NULL DEFAULT 'Ofertas válidas enquanto durarem os estoques',
             "badgeText" TEXT NOT NULL DEFAULT 'ATACADO',
             "hashtag" TEXT NOT NULL DEFAULT '#VEMPROCRÔNICAS',
+            "version" INTEGER NOT NULL DEFAULT 1,
             "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
@@ -97,6 +98,20 @@ function ensure_schema(PDO $database): void
     if (!in_array("hashtag", $columns, true)) {
         $database->exec('ALTER TABLE "Promotion" ADD COLUMN "hashtag" TEXT NOT NULL DEFAULT \'#VEMPROCRÔNICAS\'');
     }
+    if (!in_array("version", $columns, true)) {
+        $database->exec('ALTER TABLE "Promotion" ADD COLUMN "version" INTEGER NOT NULL DEFAULT 1');
+    }
+    $database->exec(
+        <<<'SQL'
+        CREATE TABLE IF NOT EXISTS "PromotionHistory" (
+            "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            "promotionVersion" INTEGER NOT NULL,
+            "snapshot" TEXT NOT NULL,
+            "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        SQL,
+    );
+    $database->exec('CREATE INDEX IF NOT EXISTS "PromotionHistory_promotionVersion_idx" ON "PromotionHistory" ("promotionVersion")');
 }
 
 function database(): PDO
@@ -139,8 +154,17 @@ function promotion_payload(PDO $database): array
     unset($product);
 
     $promotion["id"] = (int) $promotion["id"];
+    $promotion["version"] = (int) ($promotion["version"] ?? 1);
     $promotion["products"] = $products;
     return $promotion;
+}
+
+final class PromotionConflict extends RuntimeException
+{
+    public function __construct(public readonly array $promotion)
+    {
+        parent::__construct("A promoção foi alterada por outra pessoa.");
+    }
 }
 
 function validate_text(mixed $value, string $field, int $maxLength, bool $required): string
@@ -154,6 +178,11 @@ function validate_text(mixed $value, string $field, int $maxLength, bool $requir
 
 function validate_promotion(array $input): array
 {
+    $version = $input["version"] ?? null;
+    if (!is_int($version) || $version < 1) {
+        throw new InvalidArgumentException("Versão da promoção inválida. Recarregue a página.");
+    }
+
     if (!array_key_exists("products", $input) || !is_array($input["products"])) {
         throw new InvalidArgumentException("Produtos inválidos.");
     }
@@ -187,8 +216,32 @@ function validate_promotion(array $input): array
         "note" => validate_text($input["note"] ?? null, "Rodapé", 140, false),
         "badgeText" => validate_text($input["badgeText"] ?? null, "Selo vermelho", 30, true),
         "hashtag" => validate_text($input["hashtag"] ?? null, "Hashtag", 40, true),
+        "version" => $version,
         "products" => $products,
     ];
+}
+
+function record_promotion_snapshot(PDO $database, array $promotion): void
+{
+    $insert = $database->prepare(
+        'INSERT INTO "PromotionHistory" ("promotionVersion", "snapshot") VALUES (:version, :snapshot)',
+    );
+    $insert->execute([
+        "version" => $promotion["version"],
+        "snapshot" => json_encode($promotion, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+    ]);
+    $database->exec(
+        'DELETE FROM "PromotionHistory" WHERE "id" NOT IN (
+            SELECT "id" FROM "PromotionHistory" ORDER BY "id" DESC LIMIT 10
+        )',
+    );
+}
+
+function promotion_history_payload(PDO $database): array
+{
+    return $database
+        ->query('SELECT "promotionVersion", "snapshot", "createdAt" FROM "PromotionHistory" ORDER BY "id" DESC LIMIT 10')
+        ->fetchAll();
 }
 
 function save_promotion(PDO $database, array $promotion): array
@@ -198,8 +251,9 @@ function save_promotion(PDO $database, array $promotion): array
         $database->exec('INSERT OR IGNORE INTO "Promotion" ("id") VALUES (1)');
         $update = $database->prepare(
             'UPDATE "Promotion" SET "title" = :title, "subtitle" = :subtitle, "note" = :note,
-             "badgeText" = :badgeText, "hashtag" = :hashtag, "updatedAt" = CURRENT_TIMESTAMP
-             WHERE "id" = 1',
+             "badgeText" = :badgeText, "hashtag" = :hashtag,
+             "version" = "version" + 1, "updatedAt" = CURRENT_TIMESTAMP
+             WHERE "id" = 1 AND "version" = :version',
         );
         $update->execute([
             "title" => $promotion["title"],
@@ -207,7 +261,12 @@ function save_promotion(PDO $database, array $promotion): array
             "note" => $promotion["note"],
             "badgeText" => $promotion["badgeText"],
             "hashtag" => $promotion["hashtag"],
+            "version" => $promotion["version"],
         ]);
+        if ($update->rowCount() !== 1) {
+            $database->rollBack();
+            throw new PromotionConflict(promotion_payload($database));
+        }
 
         $database->exec('DELETE FROM "Product" WHERE "promotionId" = 1');
         $insert = $database->prepare(
@@ -215,13 +274,15 @@ function save_promotion(PDO $database, array $promotion): array
              VALUES (:imagePath, :wholesalePriceCents, :position, 1)',
         );
         foreach ($promotion["products"] as $product) $insert->execute($product);
+        $savedPromotion = promotion_payload($database);
+        record_promotion_snapshot($database, $savedPromotion);
         $database->commit();
     } catch (Throwable $error) {
-        $database->rollBack();
+        if ($database->inTransaction()) $database->rollBack();
         throw $error;
     }
 
-    return promotion_payload($database);
+    return $savedPromotion;
 }
 
 function upload_image(): never

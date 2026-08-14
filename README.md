@@ -11,6 +11,11 @@ No editor de imagem, o zoom é feito com a pinça no celular (ou com o gesto equ
 sem um limite artificial. A prévia A4 se ajusta à largura disponível e pode ser ampliada pelos controles
 de zoom para conferir detalhes mantendo a mesma proporção do PDF final.
 
+O editor aceita mais de uma pessoa na mesma promoção sem contas ou cadastro. O salvamento usa controle
+de versão otimista: se outra pessoa salvar enquanto você edita, o banco recusa a gravação desatualizada,
+preserva o rascunho no navegador e mostra as divergências. O rascunho pode então substituir a versão mais
+recente de forma explícita, ou ser descartado em favor dela. O banco mantém as últimas 10 versões salvas.
+
 ## Executar
 
 ```bash

@@ -12,6 +12,7 @@ import {
   FlipVertical2,
   ImagePlus,
   LoaderCircle,
+  RefreshCw,
   RotateCcw,
   RotateCw,
   Save,
@@ -25,6 +26,7 @@ import {
 import "./index.css";
 
 const emptyPromotion = {
+  version: 1,
   title: "Ofertas da semana",
   subtitle: "Preço de atacado para você economizar de verdade",
   note: "Ofertas válidas enquanto durarem os estoques",
@@ -38,6 +40,8 @@ const isPrintMode = new URLSearchParams(window.location.search).has("print");
 const PRODUCTS_PER_PAGE = 6;
 const MAX_PRODUCTS = 24;
 const PRODUCT_IMAGE_ASPECT = 1.42;
+const DRAFT_STORAGE_KEY = "cronicas-promo-draft";
+const TAB_ID_STORAGE_KEY = "cronicas-promo-tab-id";
 
 function formatPrice(cents) {
   return money.format((Number(cents) || 0) / 100);
@@ -57,6 +61,78 @@ function createDraftId() {
   return typeof globalThis.crypto?.randomUUID === "function"
     ? globalThis.crypto.randomUUID()
     : `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function normalizePromotion(data) {
+  return {
+    ...emptyPromotion,
+    ...data,
+    version: Number(data?.version) || 1,
+    products: data?.products || [],
+  };
+}
+
+function conflictDetails(localPromotion, latestPromotion) {
+  const fields = [
+    ["title", "título"],
+    ["subtitle", "chamada"],
+    ["badgeText", "selo"],
+    ["hashtag", "hashtag"],
+    ["note", "rodapé"],
+  ];
+  const changedFields = fields
+    .filter(([field]) => localPromotion[field] !== latestPromotion[field])
+    .map(([, label]) => label);
+  const productsChanged =
+    JSON.stringify(localPromotion.products) !== JSON.stringify(latestPromotion.products);
+  return productsChanged ? [...changedFields, "produtos"] : changedFields;
+}
+
+function ConflictDialog({
+  latestPromotion,
+  localPromotion,
+  onUseRemote,
+  onApplyDraft,
+  onKeepDraft,
+}) {
+  const details = conflictDetails(localPromotion, latestPromotion);
+  return (
+    <div
+      className="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="conflict-title"
+    >
+      <section className="conflict-dialog">
+        <div className="conflict-icon">
+          <RefreshCw size={23} />
+        </div>
+        <span className="eyebrow">VERSÃO MAIS RECENTE ENCONTRADA</span>
+        <h2 id="conflict-title">Seu rascunho divergiu da promoção salva</h2>
+        <p>
+          A versão {latestPromotion.version} já está no banco; seu rascunho continua aberto na
+          versão
+          {localPromotion.version}. Nada foi perdido.
+        </p>
+        {details.length > 0 && (
+          <p className="conflict-details">
+            Divergências encontradas: <strong>{details.join(", ")}.</strong>
+          </p>
+        )}
+        <div className="conflict-actions">
+          <button className="button ghost" type="button" onClick={onKeepDraft}>
+            Continuar revisando
+          </button>
+          <button className="button ghost" type="button" onClick={onUseRemote}>
+            Usar versão salva
+          </button>
+          <button className="button primary" type="button" onClick={onApplyDraft}>
+            Aplicar meu rascunho
+          </button>
+        </div>
+      </section>
+    </div>
+  );
 }
 
 const getRadianAngle = (degree) => (degree * Math.PI) / 180;
@@ -446,6 +522,42 @@ function App() {
   const [editorSource, setEditorSource] = useState(null);
   const [status, setStatus] = useState("loading");
   const [message, setMessage] = useState("");
+  const [dirty, setDirty] = useState(false);
+  const [remoteUpdate, setRemoteUpdate] = useState(null);
+  const [conflictPromotion, setConflictPromotion] = useState(null);
+  const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
+  const promotionRef = useRef(emptyPromotion);
+  const dirtyRef = useRef(false);
+  const tabIdRef = useRef("");
+
+  useEffect(() => {
+    promotionRef.current = promotion;
+  }, [promotion]);
+
+  useEffect(() => {
+    dirtyRef.current = dirty;
+  }, [dirty]);
+
+  function markDraft(updater) {
+    dirtyRef.current = true;
+    setDirty(true);
+    setPromotion((current) =>
+      typeof updater === "function" ? updater(current) : { ...current, ...updater },
+    );
+  }
+
+  function applyRemotePromotion(nextPromotion) {
+    const normalized = normalizePromotion(nextPromotion);
+    promotionRef.current = normalized;
+    dirtyRef.current = false;
+    setPromotion(normalized);
+    setDirty(false);
+    setRemoteUpdate(null);
+    setConflictPromotion(null);
+    setConflictDialogOpen(false);
+    window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+    setStatus("ready");
+  }
 
   const onDrop = useCallback(
     (acceptedFiles, fileRejections) => {
@@ -477,10 +589,44 @@ function App() {
   });
 
   useEffect(() => {
+    if (!isPrintMode) {
+      const existingTabId = window.sessionStorage.getItem(TAB_ID_STORAGE_KEY);
+      tabIdRef.current = existingTabId || createDraftId();
+      if (!existingTabId) window.sessionStorage.setItem(TAB_ID_STORAGE_KEY, tabIdRef.current);
+    }
     fetch("/api/promotion")
       .then((response) => response.json())
       .then((data) => {
-        setPromotion({ ...emptyPromotion, ...data, products: data.products || [] });
+        const loadedPromotion = normalizePromotion(data);
+        const savedDraft = !isPrintMode ? window.localStorage.getItem(DRAFT_STORAGE_KEY) : null;
+        let draft = null;
+        try {
+          draft = savedDraft ? JSON.parse(savedDraft) : null;
+        } catch {
+          window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+        }
+        if (draft?.promotion && Number.isInteger(draft.baseVersion)) {
+          const restoredPromotion = normalizePromotion({
+            ...draft.promotion,
+            version: draft.baseVersion,
+          });
+          promotionRef.current = restoredPromotion;
+          dirtyRef.current = true;
+          setPromotion(restoredPromotion);
+          setDirty(true);
+          if (restoredPromotion.version !== loadedPromotion.version) {
+            setRemoteUpdate(loadedPromotion);
+            setConflictPromotion(loadedPromotion);
+            setConflictDialogOpen(true);
+          } else {
+            setMessage("Rascunho local restaurado.");
+          }
+        } else {
+          promotionRef.current = loadedPromotion;
+          dirtyRef.current = false;
+          setPromotion(loadedPromotion);
+          setDirty(false);
+        }
         setStatus("ready");
         if (isPrintMode) document.documentElement.dataset.printReady = "true";
       })
@@ -489,6 +635,49 @@ function App() {
         setMessage("Não foi possível carregar a promoção.");
       });
   }, []);
+
+  useEffect(() => {
+    if (isPrintMode) return undefined;
+    let cancelled = false;
+
+    async function checkForRemoteChanges() {
+      try {
+        const response = await fetch("/api/promotion", { cache: "no-store" });
+        if (!response.ok || cancelled) return;
+        const latest = normalizePromotion(await response.json());
+        const current = promotionRef.current;
+        if (latest.version <= current.version) return;
+        if (dirtyRef.current) {
+          setRemoteUpdate(latest);
+          setConflictPromotion(latest);
+          return;
+        }
+        applyRemotePromotion(latest);
+        setMessage("Promoção atualizada com a versão mais recente.");
+      } catch {
+        // A próxima verificação periódica tenta novamente sem interromper a edição local.
+      }
+    }
+
+    const interval = window.setInterval(checkForRemoteChanges, 10000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isPrintMode || !dirty) return;
+    window.localStorage.setItem(
+      DRAFT_STORAGE_KEY,
+      JSON.stringify({
+        baseVersion: promotion.version,
+        promotion,
+        tabId: tabIdRef.current,
+        savedAt: new Date().toISOString(),
+      }),
+    );
+  }, [dirty, promotion]);
 
   function selectFile(event) {
     const file = event.target.files?.[0];
@@ -514,7 +703,7 @@ function App() {
     const response = await fetch("/api/uploads", { method: "POST", body });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error);
-    setPromotion((current) => ({
+    markDraft((current) => ({
       ...current,
       products: [
         ...current.products,
@@ -530,7 +719,7 @@ function App() {
   }
 
   function updateProduct(index, changes) {
-    setPromotion((current) => ({
+    markDraft((current) => ({
       ...current,
       products: current.products.map((product, productIndex) =>
         productIndex === index ? { ...product, ...changes } : product,
@@ -539,7 +728,7 @@ function App() {
   }
 
   function moveProduct(index, direction) {
-    setPromotion((current) => {
+    markDraft((current) => {
       const products = [...current.products];
       const target = index + direction;
       if (target < 0 || target >= products.length) return current;
@@ -551,7 +740,18 @@ function App() {
     });
   }
 
-  async function savePromotion(showSuccess = true, operation = "save") {
+  async function savePromotion(
+    showSuccess = true,
+    operation = "save",
+    versionOverride = null,
+    resolvingConflict = false,
+  ) {
+    if (conflictPromotion && !resolvingConflict) {
+      setStatus("conflict");
+      setMessage("Resolva a divergência antes de salvar novamente.");
+      setConflictDialogOpen(true);
+      return false;
+    }
     if (promotion.products.some((product) => product.wholesalePriceCents <= 0)) {
       setMessage("Preencha o preço de atacado de todos os produtos.");
       return false;
@@ -563,29 +763,65 @@ function App() {
       note: promotion.note,
       badgeText: promotion.badgeText,
       hashtag: promotion.hashtag,
+      version: versionOverride ?? promotion.version,
       products: promotion.products.map(({ imagePath, wholesalePriceCents }, position) => ({
         imagePath,
         wholesalePriceCents,
         position,
       })),
     };
-    const response = await fetch("/api/promotion", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await response.json();
+    let response;
+    let data;
+    try {
+      response = await fetch("/api/promotion", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      data = await response.json();
+    } catch {
+      setStatus("error");
+      setMessage("Não foi possível conectar ao servidor para salvar.");
+      return false;
+    }
     if (!response.ok) {
+      if (response.status === 409 && data.promotion) {
+        const latest = normalizePromotion(data.promotion);
+        setConflictPromotion(latest);
+        setRemoteUpdate(latest);
+        setConflictDialogOpen(true);
+        setStatus("conflict");
+        setMessage(data.error || "Outra pessoa salvou uma versão mais recente.");
+        return false;
+      }
       setStatus("error");
       setMessage(data.error || "Não foi possível salvar.");
       return false;
     }
-    setPromotion(data);
+    const savedPromotion = normalizePromotion(data);
+    promotionRef.current = savedPromotion;
+    dirtyRef.current = false;
+    setPromotion(savedPromotion);
+    setDirty(false);
+    setRemoteUpdate(null);
+    setConflictPromotion(null);
+    setConflictDialogOpen(false);
+    window.localStorage.removeItem(DRAFT_STORAGE_KEY);
     if (operation === "pdf") return true;
     setStatus("saved");
     setMessage(showSuccess ? "Promoção salva no banco de dados." : "");
     window.setTimeout(() => setStatus("ready"), 2200);
     return true;
+  }
+
+  async function applyDraftOverCurrent() {
+    if (!conflictPromotion) return;
+    const shouldApply = window.confirm(
+      "Aplicar seu rascunho substituirá o conteúdo da versão mais recente e criará uma nova versão. Continuar?",
+    );
+    if (!shouldApply) return;
+    setConflictDialogOpen(false);
+    await savePromotion(true, "save", conflictPromotion.version, true);
   }
 
   async function generatePdf() {
@@ -625,7 +861,7 @@ function App() {
           <button
             className="button secondary"
             onClick={() => savePromotion()}
-            disabled={status === "saving" || status === "pdf"}
+            disabled={status === "saving" || status === "pdf" || Boolean(conflictPromotion)}
           >
             {status === "saving" ? (
               <LoaderCircle className="spin" size={18} />
@@ -639,7 +875,7 @@ function App() {
           <button
             className="button primary"
             onClick={generatePdf}
-            disabled={status === "saving" || status === "pdf"}
+            disabled={status === "saving" || status === "pdf" || Boolean(conflictPromotion)}
           >
             {status === "pdf" ? <ArrowDown className="spin" size={18} /> : <Download size={18} />}{" "}
             {status === "pdf" ? "Gerando" : "Gerar PDF"}
@@ -661,7 +897,7 @@ function App() {
               <input
                 value={promotion.title}
                 maxLength={60}
-                onChange={(event) => setPromotion({ ...promotion, title: event.target.value })}
+                onChange={(event) => markDraft({ title: event.target.value })}
               />
             </label>
             <label>
@@ -669,7 +905,7 @@ function App() {
               <input
                 value={promotion.subtitle}
                 maxLength={120}
-                onChange={(event) => setPromotion({ ...promotion, subtitle: event.target.value })}
+                onChange={(event) => markDraft({ subtitle: event.target.value })}
               />
             </label>
             <label>
@@ -677,7 +913,7 @@ function App() {
               <input
                 value={promotion.badgeText}
                 maxLength={30}
-                onChange={(event) => setPromotion({ ...promotion, badgeText: event.target.value })}
+                onChange={(event) => markDraft({ badgeText: event.target.value })}
               />
             </label>
             <label>
@@ -685,7 +921,7 @@ function App() {
               <input
                 value={promotion.hashtag}
                 maxLength={40}
-                onChange={(event) => setPromotion({ ...promotion, hashtag: event.target.value })}
+                onChange={(event) => markDraft({ hashtag: event.target.value })}
               />
             </label>
             <label className="full-field">
@@ -693,7 +929,7 @@ function App() {
               <input
                 value={promotion.note}
                 maxLength={140}
-                onChange={(event) => setPromotion({ ...promotion, note: event.target.value })}
+                onChange={(event) => markDraft({ note: event.target.value })}
               />
             </label>
           </div>
@@ -784,7 +1020,7 @@ function App() {
                   <button
                     className="danger"
                     onClick={() =>
-                      setPromotion({
+                      markDraft({
                         ...promotion,
                         products: promotion.products.filter((_, itemIndex) => itemIndex !== index),
                       })
@@ -797,8 +1033,24 @@ function App() {
               </div>
             ))}
           </div>
+          {remoteUpdate && (
+            <div className="remote-update-message">
+              <div>
+                <RefreshCw size={17} />
+                <span>
+                  Uma versão mais recente foi salva enquanto você editava. Seu rascunho local foi
+                  preservado.
+                </span>
+              </div>
+              <button type="button" onClick={() => setConflictDialogOpen(true)}>
+                Resolver
+              </button>
+            </div>
+          )}
           {message && (
-            <div className={`status-message ${status === "error" ? "error" : ""}`}>
+            <div
+              className={`status-message ${status === "error" || status === "conflict" ? "error" : ""}`}
+            >
               {message}
               <button onClick={() => setMessage("")}>
                 <X size={14} />
@@ -817,6 +1069,15 @@ function App() {
             setEditorSource(null);
             window.setTimeout(() => cameraInputRef.current?.click(), 0);
           }}
+        />
+      )}
+      {conflictPromotion && conflictDialogOpen && (
+        <ConflictDialog
+          latestPromotion={conflictPromotion}
+          localPromotion={promotion}
+          onUseRemote={() => applyRemotePromotion(conflictPromotion)}
+          onApplyDraft={applyDraftOverCurrent}
+          onKeepDraft={() => setConflictDialogOpen(false)}
         />
       )}
     </main>

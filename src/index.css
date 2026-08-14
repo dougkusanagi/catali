@@ -361,6 +361,38 @@ button {
   background: #fde6e3;
   color: #a52318;
 }
+.remote-update-message {
+  margin-top: 17px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  background: #fff4d9;
+  border: 1px solid #ebcf83;
+  color: #694d0b;
+  border-radius: 4px;
+}
+.remote-update-message > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.remote-update-message svg {
+  flex: none;
+}
+.remote-update-message span {
+  font-size: 14px;
+}
+.remote-update-message button {
+  flex: none;
+  border: 0;
+  background: #694d0b;
+  color: white;
+  border-radius: 3px;
+  padding: 8px 11px;
+  font-weight: 700;
+}
 .status-message button {
   background: none;
   border: 0;
@@ -649,6 +681,53 @@ button {
   place-items: center;
   padding: 22px;
 }
+.conflict-dialog {
+  width: min(430px, 100%);
+  background: #f8f4ed;
+  border-top: 5px solid var(--gold);
+  box-shadow: 0 30px 90px #000;
+  padding: 30px;
+}
+.conflict-icon {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #211d19;
+  color: var(--gold);
+}
+.conflict-icon {
+  background: #fff0cf;
+  color: #9b6e0c;
+}
+.conflict-dialog h2 {
+  margin: 5px 0 9px;
+  font-family: "Archivo Black";
+  font-size: 25px;
+  line-height: 1.03;
+  text-transform: uppercase;
+}
+.conflict-dialog p {
+  margin: 0 0 22px;
+  color: #71675d;
+  font-size: 16px;
+  line-height: 1.35;
+}
+.conflict-dialog .conflict-details {
+  margin-top: -8px;
+  padding: 10px 12px;
+  background: #fff0cf;
+  border-left: 3px solid var(--gold);
+  color: #75530b;
+  font-size: 14px;
+}
+.conflict-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+}
 .image-editor {
   width: min(760px, 100%);
   max-height: 94vh;
@@ -907,6 +986,20 @@ button {
   }
   .image-editor {
     padding: 18px;
+  }
+  .conflict-dialog {
+    padding: 22px;
+  }
+  .conflict-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .remote-update-message {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .remote-update-message button {
+    width: 100%;
   }
   .crop-stage {
     width: 100%;

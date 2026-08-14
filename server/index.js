@@ -19,6 +19,7 @@ const productSchema = z.object({
 });
 
 const promotionSchema = z.object({
+  version: z.number().int().positive(),
   title: z.string().trim().min(1).max(60),
   subtitle: z.string().trim().max(120),
   note: z.string().trim().max(140),
@@ -38,35 +39,76 @@ async function getPromotion() {
 
 app.get("/api/promotion", async (context) => context.json(await getPromotion()));
 
+app.get("/api/promotion/history", async (context) =>
+  context.json({
+    items: await prisma.promotionHistory.findMany({
+      orderBy: { id: "desc" },
+      take: 10,
+      select: { promotionVersion: true, snapshot: true, createdAt: true },
+    }),
+  }),
+);
+
 app.put("/api/promotion", async (context) => {
   const parsed = promotionSchema.safeParse(await context.req.json());
   if (!parsed.success)
     return context.json({ error: "Dados inválidos", details: parsed.error.flatten() }, 400);
 
   const promotion = await prisma.$transaction(async (transaction) => {
-    await transaction.product.deleteMany({ where: { promotionId: 1 } });
-    return transaction.promotion.upsert({
+    await transaction.promotion.upsert({
       where: { id: 1 },
-      create: {
-        id: 1,
+      update: {},
+      create: { id: 1 },
+    });
+    const updated = await transaction.promotion.updateMany({
+      where: { id: 1, version: parsed.data.version },
+      data: {
         title: parsed.data.title,
         subtitle: parsed.data.subtitle,
         note: parsed.data.note,
         badgeText: parsed.data.badgeText,
         hashtag: parsed.data.hashtag,
-        products: { create: parsed.data.products },
+        version: { increment: 1 },
       },
-      update: {
-        title: parsed.data.title,
-        subtitle: parsed.data.subtitle,
-        note: parsed.data.note,
-        badgeText: parsed.data.badgeText,
-        hashtag: parsed.data.hashtag,
-        products: { create: parsed.data.products },
-      },
+    });
+    if (updated.count !== 1) return null;
+    await transaction.product.deleteMany({ where: { promotionId: 1 } });
+    await transaction.product.createMany({
+      data: parsed.data.products.map((product) => ({ ...product, promotionId: 1 })),
+    });
+    const savedPromotion = await transaction.promotion.findUnique({
+      where: { id: 1 },
       include: { products: { orderBy: { position: "asc" } } },
     });
+    await transaction.promotionHistory.create({
+      data: {
+        promotionVersion: savedPromotion.version,
+        snapshot: JSON.stringify(savedPromotion),
+      },
+    });
+    const staleHistory = await transaction.promotionHistory.findMany({
+      orderBy: { id: "desc" },
+      skip: 10,
+      select: { id: true },
+    });
+    if (staleHistory.length) {
+      await transaction.promotionHistory.deleteMany({
+        where: { id: { in: staleHistory.map((item) => item.id) } },
+      });
+    }
+    return savedPromotion;
   });
+  if (!promotion) {
+    return context.json(
+      {
+        error:
+          "Outra pessoa salvou uma versão mais recente. Sua edição continua aberta, mas precisa ser revisada.",
+        code: "VERSION_CONFLICT",
+        promotion: await getPromotion(),
+      },
+      409,
+    );
+  }
   return context.json(promotion);
 });
 
