@@ -1,0 +1,18 @@
+[Unit]
+Description=Crônicas Promo PDF API
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/promo-pdf/current
+EnvironmentFile=/var/www/promo-pdf/current/.env
+ExecStart=__BUN_BIN__ server/index.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
