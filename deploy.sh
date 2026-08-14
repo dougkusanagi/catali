@@ -38,6 +38,8 @@ PDF_APP_URL="https://promo-pdf.cronicasjeans.com.br"
 EOF
     chmod 0640 .env
 fi
+chown root:www-data .env
+chmod 0640 .env
 php php/migrate.php
 
 CHROMIUM_BIN="${CHROMIUM_BIN:-}"
