@@ -296,24 +296,6 @@ button {
   opacity: 0.25;
   cursor: default;
 }
-.empty-products {
-  min-height: 142px;
-  border: 1.5px dashed #c9beb1;
-  background: #f3efe8;
-  border-radius: 5px;
-  color: #7b7065;
-  display: grid;
-  place-items: center;
-  align-content: center;
-  gap: 5px;
-}
-.empty-products svg {
-  color: var(--gold);
-}
-.empty-products strong {
-  color: #3c352f;
-  font-size: 17px;
-}
 .drop-zone {
   margin: 0 0 14px;
   min-height: 72px;
@@ -361,6 +343,9 @@ button {
 }
 .drop-zone span {
   font-size: 13px;
+}
+.drop-copy-mobile {
+  display: none;
 }
 .status-message {
   margin-top: 17px;
@@ -812,9 +797,6 @@ button {
   }
 }
 @media (max-width: 700px) {
-  .drop-zone {
-    display: none;
-  }
   .products-heading {
     display: grid;
     grid-template-columns: 1fr;
@@ -829,10 +811,11 @@ button {
   .small-button {
     width: 100%;
   }
-}
-@media (min-width: 701px) {
-  .empty-products {
+  .drop-copy-desktop {
     display: none;
+  }
+  .drop-copy-mobile {
+    display: inline;
   }
 }
 @media (max-width: 590px) {

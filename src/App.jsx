@@ -424,7 +424,6 @@ function PromoPreview({ promotion }) {
 }
 
 function App() {
-  const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
   const [promotion, setPromotion] = useState(emptyPromotion);
   const [editorSource, setEditorSource] = useState(null);
@@ -697,21 +696,11 @@ function App() {
               </div>
             </div>
             <div className="add-actions">
-              <button className="small-button" onClick={() => fileInputRef.current.click()}>
-                <ImagePlus size={17} /> Galeria
-              </button>
               <button className="small-button red" onClick={() => cameraInputRef.current.click()}>
                 <Camera size={17} /> Tirar foto
               </button>
             </div>
           </div>
-          <input
-            ref={fileInputRef}
-            hidden
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            onChange={selectFile}
-          />
           <input
             ref={cameraInputRef}
             hidden
@@ -730,10 +719,13 @@ function App() {
               <ImagePlus size={21} />
             </div>
             <div>
-              <strong>
-                {isDragActive ? "Solte a foto aqui" : "Arraste uma foto para adicionar"}
-              </strong>
-              <span>Cada nova foto vira um produto • ou toque para escolher</span>
+              <strong>{isDragActive ? "Solte a foto aqui" : "Adicionar foto pela galeria"}</strong>
+              <span className="drop-copy-desktop">
+                Arraste uma foto ou toque para abrir a galeria • cada foto vira um produto
+              </span>
+              <span className="drop-copy-mobile">
+                Toque para abrir a galeria • cada foto vira um produto
+              </span>
             </div>
           </div>
           <div className="product-list">
@@ -793,13 +785,6 @@ function App() {
                 </div>
               </div>
             ))}
-            {promotion.products.length === 0 && (
-              <button className="empty-products" onClick={() => fileInputRef.current.click()}>
-                <ImagePlus size={28} />
-                <strong>Adicionar primeira foto</strong>
-                <span>Toque para escolher uma imagem do produto.</span>
-              </button>
-            )}
           </div>
           {message && (
             <div className={`status-message ${status === "error" ? "error" : ""}`}>
