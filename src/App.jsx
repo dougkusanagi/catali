@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ReactCrop, { centerCrop, makeAspectCrop } from "react-image-crop";
+import { useDropzone } from "react-dropzone";
+import { NumericFormat } from "react-number-format";
 import "react-image-crop/dist/ReactCrop.css";
 import {
   ArrowDown,
@@ -30,17 +32,11 @@ const emptyPromotion = {
 
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const isPrintMode = new URLSearchParams(window.location.search).has("print");
+const PRODUCTS_PER_PAGE = 6;
+const MAX_PRODUCTS = 24;
 
 function formatPrice(cents) {
   return money.format((Number(cents) || 0) / 100);
-}
-
-function priceToCents(value) {
-  const normalized = String(value)
-    .replace(/[^\d,.-]/g, "")
-    .replace(".", "")
-    .replace(",", ".");
-  return Math.round((Number.parseFloat(normalized) || 0) * 100);
 }
 
 function centerAspectCrop(width, height) {
@@ -238,8 +234,11 @@ function PromoPage({ promotion, products, pageNumber, totalPages }) {
 
 function PromoDocument({ promotion }) {
   const pages = promotion.products.length
-    ? Array.from({ length: Math.ceil(promotion.products.length / 6) }, (_, index) =>
-        promotion.products.slice(index * 6, index * 6 + 6),
+    ? Array.from({ length: Math.ceil(promotion.products.length / PRODUCTS_PER_PAGE) }, (_, index) =>
+        promotion.products.slice(
+          index * PRODUCTS_PER_PAGE,
+          index * PRODUCTS_PER_PAGE + PRODUCTS_PER_PAGE,
+        ),
       )
     : [[]];
   return (
@@ -265,6 +264,35 @@ function App() {
   const [status, setStatus] = useState("loading");
   const [message, setMessage] = useState("");
 
+  const onDrop = useCallback(
+    (acceptedFiles, fileRejections) => {
+      if (fileRejections.length > 0) {
+        setStatus("error");
+        setMessage("Solte uma imagem JPG, PNG ou WebP de até 10 MB.");
+        return;
+      }
+      if (promotion.products.length >= MAX_PRODUCTS) {
+        setStatus("error");
+        setMessage(`O limite é de ${MAX_PRODUCTS} produtos por promoção.`);
+        return;
+      }
+      const file = acceptedFiles[0];
+      if (!file) return;
+      setEditorSource(URL.createObjectURL(file));
+      setMessage("");
+      setStatus("ready");
+    },
+    [promotion.products.length],
+  );
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: { "image/jpeg": [], "image/png": [], "image/webp": [] },
+    maxFiles: 1,
+    maxSize: 10 * 1024 * 1024,
+    multiple: false,
+  });
+
   useEffect(() => {
     fetch("/api/promotion")
       .then((response) => response.json())
@@ -281,11 +309,23 @@ function App() {
 
   function selectFile(event) {
     const file = event.target.files?.[0];
-    if (file) setEditorSource(URL.createObjectURL(file));
+    if (file && promotion.products.length >= MAX_PRODUCTS) {
+      setStatus("error");
+      setMessage(`O limite é de ${MAX_PRODUCTS} produtos por promoção.`);
+    } else if (file) {
+      setEditorSource(URL.createObjectURL(file));
+      setMessage("");
+    }
     event.target.value = "";
   }
 
   async function uploadEditedImage(file) {
+    if (promotion.products.length >= MAX_PRODUCTS) {
+      setStatus("error");
+      setMessage(`O limite é de ${MAX_PRODUCTS} produtos por promoção.`);
+      setEditorSource(null);
+      return;
+    }
     const body = new FormData();
     body.append("image", file);
     const response = await fetch("/api/uploads", { method: "POST", body });
@@ -483,7 +523,10 @@ function App() {
               <span className="step-number">02</span>
               <div>
                 <h2>Produtos</h2>
-                <p>{promotion.products.length} de 24 ofertas</p>
+                <p>
+                  {promotion.products.length} de {MAX_PRODUCTS} fotos • {PRODUCTS_PER_PAGE} por
+                  página
+                </p>
               </div>
             </div>
             <div className="add-actions">
@@ -510,6 +553,22 @@ function App() {
             capture="environment"
             onChange={selectFile}
           />
+          <div
+            {...getRootProps({
+              className: `drop-zone ${isDragActive ? "is-dragging" : ""}`,
+            })}
+          >
+            <input {...getInputProps()} />
+            <div className="drop-zone-icon">
+              <ImagePlus size={21} />
+            </div>
+            <div>
+              <strong>
+                {isDragActive ? "Solte a foto aqui" : "Arraste uma foto para adicionar"}
+              </strong>
+              <span>Cada nova foto vira um produto • ou toque para escolher</span>
+            </div>
+          </div>
           <div className="product-list">
             {promotion.products.map((product, index) => (
               <div className="product-row" key={product.id}>
@@ -519,17 +578,19 @@ function App() {
                   <span>Preço de atacado</span>
                   <div className="price-input">
                     <b>R$</b>
-                    <input
+                    <NumericFormat
                       inputMode="decimal"
                       placeholder="0,00"
-                      value={
-                        product.wholesalePriceCents
-                          ? (product.wholesalePriceCents / 100).toFixed(2).replace(".", ",")
-                          : ""
-                      }
-                      onChange={(event) =>
+                      value={product.wholesalePriceCents ? product.wholesalePriceCents / 100 : ""}
+                      thousandSeparator="."
+                      decimalSeparator=","
+                      decimalScale={2}
+                      fixedDecimalScale
+                      allowNegative={false}
+                      allowLeadingZeros={false}
+                      onValueChange={({ floatValue }) =>
                         updateProduct(index, {
-                          wholesalePriceCents: priceToCents(event.target.value),
+                          wholesalePriceCents: Math.round((floatValue || 0) * 100),
                         })
                       }
                     />
@@ -589,8 +650,8 @@ function App() {
               <strong>A4 • PDF</strong>
             </div>
             <i>
-              {promotion.products.length > 6
-                ? `${Math.ceil(promotion.products.length / 6)} páginas`
+              {promotion.products.length > PRODUCTS_PER_PAGE
+                ? `${Math.ceil(promotion.products.length / PRODUCTS_PER_PAGE)} páginas`
                 : "1 página"}
             </i>
           </div>

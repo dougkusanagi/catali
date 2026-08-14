@@ -29,7 +29,9 @@
     "playwright": "^1.62.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "react-dropzone": "^20.1.0",
     "react-image-crop": "^11.1.2",
+    "react-number-format": "^5.4.5",
     "tailwindcss": "^4.3.3",
     "zod": "^4.4.3"
   },

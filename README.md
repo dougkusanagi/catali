@@ -2,6 +2,11 @@
 
 Editor React/Vite+ para montar promoções com fotos e preços de atacado, salvar em SQLite e baixar em PDF.
 
+Cada foto adicionada cria um novo produto. O PDF mantém os produtos em uma grade fixa de duas colunas,
+com até 6 produtos por página; acima disso, novas páginas são criadas automaticamente (limite de 24
+produtos por promoção). É possível escolher uma imagem pela galeria, tirar uma foto ou arrastá-la para
+a área de produtos.
+
 ## Executar
 
 ```bash
