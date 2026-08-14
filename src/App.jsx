@@ -37,6 +37,7 @@ const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL
 const isPrintMode = new URLSearchParams(window.location.search).has("print");
 const PRODUCTS_PER_PAGE = 6;
 const MAX_PRODUCTS = 24;
+const PRODUCT_IMAGE_ASPECT = 1.42;
 
 function formatPrice(cents) {
   return money.format((Number(cents) || 0) / 100);
@@ -218,7 +219,7 @@ function ImageEditor({ source, onCancel, onDone, onRetake }) {
             crop={crop}
             zoom={zoom}
             rotation={rotation}
-            aspect={1}
+            aspect={PRODUCT_IMAGE_ASPECT}
             cropSize={cropContainerSize ?? undefined}
             minZoom={minZoom}
             maxZoom={5}
@@ -550,12 +551,12 @@ function App() {
     });
   }
 
-  async function savePromotion(showSuccess = true) {
+  async function savePromotion(showSuccess = true, operation = "save") {
     if (promotion.products.some((product) => product.wholesalePriceCents <= 0)) {
       setMessage("Preencha o preço de atacado de todos os produtos.");
       return false;
     }
-    setStatus("saving");
+    setStatus(operation === "pdf" ? "pdf" : "saving");
     const payload = {
       title: promotion.title,
       subtitle: promotion.subtitle,
@@ -580,6 +581,7 @@ function App() {
       return false;
     }
     setPromotion(data);
+    if (operation === "pdf") return true;
     setStatus("saved");
     setMessage(showSuccess ? "Promoção salva no banco de dados." : "");
     window.setTimeout(() => setStatus("ready"), 2200);
@@ -587,7 +589,7 @@ function App() {
   }
 
   async function generatePdf() {
-    const saved = await savePromotion(false);
+    const saved = await savePromotion(false, "pdf");
     if (!saved) return;
     setStatus("pdf");
     const response = await fetch("/api/promotion/pdf");
@@ -623,7 +625,7 @@ function App() {
           <button
             className="button secondary"
             onClick={() => savePromotion()}
-            disabled={status === "saving"}
+            disabled={status === "saving" || status === "pdf"}
           >
             {status === "saving" ? (
               <LoaderCircle className="spin" size={18} />
@@ -639,12 +641,8 @@ function App() {
             onClick={generatePdf}
             disabled={status === "saving" || status === "pdf"}
           >
-            {status === "pdf" ? (
-              <LoaderCircle className="spin" size={18} />
-            ) : (
-              <Download size={18} />
-            )}{" "}
-            Gerar PDF
+            {status === "pdf" ? <ArrowDown className="spin" size={18} /> : <Download size={18} />}{" "}
+            {status === "pdf" ? "Gerando" : "Gerar PDF"}
           </button>
         </div>
       </header>
