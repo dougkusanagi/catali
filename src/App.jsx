@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Cropper from "react-easy-crop";
 import { useDropzone } from "react-dropzone";
-import { NumericFormat } from "react-number-format";
+import { NumberFormatBase } from "react-number-format";
 import {
   ArrowDown,
   ArrowUp,
@@ -40,6 +40,16 @@ const MAX_PRODUCTS = 24;
 
 function formatPrice(cents) {
   return money.format((Number(cents) || 0) / 100);
+}
+
+function formatCentsInput(value) {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  if (!digits) return "";
+
+  const normalized = digits.replace(/^0+(?=\d)/, "").padStart(3, "0");
+  const integerPart = normalized.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+
+  return `${integerPart},${normalized.slice(-2)}`;
 }
 
 function createDraftId() {
@@ -737,19 +747,16 @@ function App() {
                   <span>Preço de atacado</span>
                   <div className="price-input">
                     <b>R$</b>
-                    <NumericFormat
+                    <NumberFormatBase
                       inputMode="decimal"
                       placeholder="0,00"
-                      value={product.wholesalePriceCents ? product.wholesalePriceCents / 100 : ""}
-                      thousandSeparator="."
-                      decimalSeparator=","
-                      decimalScale={2}
-                      fixedDecimalScale
-                      allowNegative={false}
-                      allowLeadingZeros={false}
-                      onValueChange={({ floatValue }) =>
+                      value={product.wholesalePriceCents ? String(product.wholesalePriceCents) : ""}
+                      valueIsNumericString
+                      format={formatCentsInput}
+                      removeFormatting={(value) => String(value ?? "").replace(/\D/g, "")}
+                      onValueChange={({ value }) =>
                         updateProduct(index, {
-                          wholesalePriceCents: Math.round((floatValue || 0) * 100),
+                          wholesalePriceCents: Number(value) || 0,
                         })
                       }
                     />

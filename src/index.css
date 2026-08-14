@@ -472,7 +472,7 @@ button {
     linear-gradient(145deg, #fffdf8 0%, #f3ead7 100%);
   color: var(--ink);
   display: grid;
-  grid-template-rows: 42mm 1fr 13mm;
+  grid-template-rows: 42mm minmax(0, 1fr) 13mm;
   page-break-after: always;
 }
 .page-orbit {
@@ -543,6 +543,7 @@ button {
   color: #6b5c4b;
 }
 .products-grid {
+  min-height: 0;
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   grid-template-rows: repeat(3, minmax(0, 1fr));
