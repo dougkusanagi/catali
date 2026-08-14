@@ -14,6 +14,17 @@ fi
 
 cd "${RELEASE_DIR}"
 
+echo "Atualizando o código..."
+if [[ -n "$(git status --porcelain)" ]]; then
+    echo "O checkout possui alterações locais; deploy cancelado para não sobrescrevê-las."
+    exit 1
+fi
+if ! git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' >/dev/null 2>&1; then
+    echo "A branch atual não possui upstream configurado; deploy cancelado."
+    exit 1
+fi
+git pull --ff-only
+
 echo "Instalando Vite+ (vp), se necessário..."
 if ! command -v vp >/dev/null 2>&1; then
     curl -fsSL https://vite.plus | bash
