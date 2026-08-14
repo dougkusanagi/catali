@@ -1,20 +1,20 @@
 promo-pdf.cronicasjeans.com.br {
     encode gzip
+    root * __APP_ROOT__/dist
 
-    handle_path /api/* {
-        root * __APP_ROOT__/php
-        rewrite * /index.php?route=/api{http.request.uri.path}
-        php_fastcgi unix/__PHP_FPM_SOCK__
-    }
+    route {
+        handle_path /api/* {
+            root * __APP_ROOT__/php
+            rewrite * /index.php?route=/api{http.request.uri.path}
+            php_fastcgi unix/__PHP_FPM_SOCK__
+        }
 
-    @uploads path /uploads/*
-    handle @uploads {
-        root * __APP_ROOT__/storage/uploads
-        uri strip_prefix /uploads
+        handle_path /uploads/* {
+            root * __APP_ROOT__/storage/uploads
+            file_server
+        }
+
+        try_files {path} /index.html
         file_server
     }
-
-    root * __APP_ROOT__/dist
-    try_files {path} /index.html
-    file_server
 }
