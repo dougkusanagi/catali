@@ -726,6 +726,9 @@ button {
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+.gesture-hint-mobile {
+  display: none;
+}
 .crop-tools {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -817,6 +820,12 @@ button {
   }
   .drop-copy-mobile {
     display: inline;
+  }
+  .gesture-hint-desktop {
+    display: none;
+  }
+  .gesture-hint-mobile {
+    display: block;
   }
 }
 @media (max-width: 590px) {

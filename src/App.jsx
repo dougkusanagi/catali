@@ -221,9 +221,9 @@ function ImageEditor({ source, onCancel, onDone, onRetake }) {
             aspect={1}
             cropSize={cropContainerSize ?? undefined}
             minZoom={minZoom}
-            maxZoom={Number.POSITIVE_INFINITY}
+            maxZoom={5}
             objectFit="contain"
-            zoomWithScroll={false}
+            zoomWithScroll
             showGrid
             roundCropAreaPixels
             onCropChange={setCrop}
@@ -237,7 +237,12 @@ function ImageEditor({ source, onCancel, onDone, onRetake }) {
           />
         </div>
         <div className="editor-controls">
-          <p className="gesture-hint">Use dois dedos para aproximar ou afastar</p>
+          <p className="gesture-hint gesture-hint-desktop">
+            Role o mouse sobre a imagem para aproximar ou afastar
+          </p>
+          <p className="gesture-hint gesture-hint-mobile">
+            Use dois dedos para aproximar ou afastar
+          </p>
           <div className="crop-tools">
             <button onClick={() => rotateCrop(-90)} title="Girar para a esquerda">
               <RotateCcw size={17} /> <span>Esquerda</span>
