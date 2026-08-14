@@ -8,6 +8,7 @@ User=www-data
 Group=www-data
 WorkingDirectory=/var/www/promo-pdf/current
 EnvironmentFile=/var/www/promo-pdf/current/.env
+Environment=PLAYWRIGHT_BROWSERS_PATH=/var/www/.cache/ms-playwright
 ExecStart=__BUN_BIN__ server/index.js
 Restart=always
 RestartSec=3

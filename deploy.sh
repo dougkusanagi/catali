@@ -44,7 +44,8 @@ bunx --bun prisma migrate deploy
 bunx --bun prisma generate
 
 echo "Instalando Chromium para geração de PDF..."
-bunx playwright install chromium
+install -d -o www-data -g www-data -m 0755 /var/www/.cache
+runuser -u www-data -- env HOME=/var/www PLAYWRIGHT_BROWSERS_PATH=/var/www/.cache/ms-playwright bunx playwright install chromium
 
 echo "Compilando assets com Vite+..."
 vp build
