@@ -1,4 +1,21 @@
 promo-pdf.cronicasjeans.com.br {
     encode gzip
-    reverse_proxy 127.0.0.1:3001
+
+    @api path /api/*
+    handle @api {
+        root * __APP_ROOT__/php
+        rewrite * /index.php?route={http.request.uri.path}
+        php_fastcgi unix/__PHP_FPM_SOCK__
+    }
+
+    @uploads path /uploads/*
+    handle @uploads {
+        root * __APP_ROOT__/storage/uploads
+        uri strip_prefix /uploads
+        file_server
+    }
+
+    root * __APP_ROOT__/dist
+    try_files {path} /index.html
+    file_server
 }

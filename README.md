@@ -23,11 +23,32 @@ bun run dev
 
 Abra `http://localhost:5199`. O frontend usa a porta 5199 e a API Bun, a porta 3001.
 
-## Produção
+### Testar a versão PHP-FPM localmente
+
+O backend PHP usa o mesmo SQLite e os mesmos endpoints do frontend. Gere os assets e suba o
+servidor embutido do PHP:
 
 ```bash
+vp install
 vp build
-bun start
+php php/migrate.php
+PHP_CLI_SERVER_WORKERS=4 php -S 127.0.0.1:8080 php/router.php
 ```
 
-Configure `APP_URL` com a URL pública usada pelo navegador headless para renderizar o PDF. O banco fica em `storage/database.db` e as imagens em `storage/uploads`; ambos devem ser incluídos em sua rotina de backup.
+Abra `http://127.0.0.1:8080`. Para gerar PDF localmente, instale o Chromium do Playwright (`bunx
+playwright install chromium`) e deixe Node/Bun disponível para o processo pontual de renderização.
+O endpoint PHP usa `page.pdf` com as mesmas opções do backend original; nenhum serviço Bun fica
+rodando entre as requisições.
+
+## Produção
+
+O deploy PHP-FPM não instala nem mantém um serviço Bun. O Caddy serve o frontend estático, encaminha
+`/api/*` para o socket do PHP-FPM e serve as imagens de `storage/uploads`:
+
+```bash
+sudo bash deploy.sh
+```
+
+Defina `PHP_FPM_SOCK` se houver mais de uma versão do PHP instalada. Se Node/Bun ou o Chromium não
+estiverem em um caminho padrão, defina `PDF_RUNTIME_BIN` ou `CHROMIUM_BIN`. O banco fica em
+`storage/database.db` e as imagens em `storage/uploads`; ambos devem ser incluídos em sua rotina de backup.

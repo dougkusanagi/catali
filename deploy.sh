@@ -4,7 +4,6 @@ set -Eeuo pipefail
 
 APP_ROOT="${APP_ROOT:-/var/www/promo-pdf}"
 RELEASE_DIR="${APP_ROOT}/current"
-SERVICE_NAME="promo-pdf"
 
 export PATH="/root/.vite-plus/bin:/root/.bun/bin:/usr/local/bin:${PATH}"
 
@@ -21,51 +20,67 @@ if ! command -v vp >/dev/null 2>&1; then
     export PATH="${HOME}/.vite-plus/bin:${HOME}/.bun/bin:${PATH}"
 fi
 
-if ! command -v bun >/dev/null 2>&1; then
-    echo "Bun não encontrado. Instale Bun antes de executar o deploy."
+if ! command -v php >/dev/null 2>&1; then
+    echo "PHP não encontrado. Instale PHP-FPM e as extensões PDO SQLite/Fileinfo antes do deploy."
     exit 1
 fi
 
 echo "Instalando dependências..."
 vp install --frozen-lockfile
 
-echo "Aplicando banco e gerando Prisma Client..."
+echo "Preparando banco SQLite..."
 mkdir -p storage/uploads storage/temp
 chown -R www-data:www-data storage
 if [[ ! -f .env ]]; then
     cat > .env <<'EOF'
 DATABASE_URL="file:./storage/database.db"
-PORT=3001
-APP_URL="http://127.0.0.1:3001"
+PDF_APP_URL="https://promo-pdf.cronicasjeans.com.br"
 EOF
     chmod 0640 .env
 fi
-bunx --bun prisma migrate deploy
-bunx --bun prisma generate
+php php/migrate.php
 
-echo "Instalando Chromium para geração de PDF..."
-echo "Instalando dependências nativas do Chromium..."
-/usr/local/bin/bun x playwright install-deps chromium
-install -d -o www-data -g www-data -m 0755 /var/www/.cache
-runuser -u www-data -- env HOME=/var/www PLAYWRIGHT_BROWSERS_PATH=/var/www/.cache/ms-playwright /usr/local/bin/bun x playwright install chromium
+CHROMIUM_BIN="${CHROMIUM_BIN:-}"
+if [[ -z "${CHROMIUM_BIN}" ]]; then
+    CHROMIUM_BIN="$(command -v chromium || command -v chromium-browser || command -v google-chrome || true)"
+fi
+if [[ -z "${CHROMIUM_BIN}" && -d /var/www/.cache/ms-playwright ]]; then
+    CHROMIUM_BIN="$(find /var/www/.cache/ms-playwright -type f \( -name chrome -o -name chrome-headless-shell \) -perm -u+x -print -quit)"
+fi
+if [[ -z "${CHROMIUM_BIN}" ]]; then
+    echo "Chromium não encontrado. Defina CHROMIUM_BIN e execute o deploy novamente."
+    exit 1
+fi
+echo "Chromium encontrado em ${CHROMIUM_BIN}."
 
 echo "Compilando assets com Vite+..."
 vp build
 
-echo "Instalando unidade systemd..."
-BUN_BIN="$(command -v bun)"
-if [[ "${BUN_BIN}" != "/usr/local/bin/bun" ]]; then
-    install -m 0755 "${BUN_BIN}" /usr/local/bin/bun
-    BUN_BIN="/usr/local/bin/bun"
+PHP_FPM_SOCK="${PHP_FPM_SOCK:-}"
+if [[ -z "${PHP_FPM_SOCK}" ]]; then
+    PHP_FPM_SOCK="$(find /run/php -maxdepth 1 -type s -name 'php*-fpm.sock' -print -quit 2>/dev/null || true)"
 fi
-sed "s|__BUN_BIN__|${BUN_BIN}|g" deploy/promo-pdf.service > "/etc/systemd/system/${SERVICE_NAME}.service"
-systemctl daemon-reload
-systemctl enable "${SERVICE_NAME}.service"
-systemctl restart "${SERVICE_NAME}.service"
+if [[ -z "${PHP_FPM_SOCK}" ]]; then
+    echo "Socket do PHP-FPM não encontrado em /run/php. Defina PHP_FPM_SOCK e execute novamente."
+    exit 1
+fi
+
+if systemctl is-active --quiet promo-pdf.service || systemctl is-enabled --quiet promo-pdf.service; then
+    echo "Desativando o serviço Bun antigo..."
+    systemctl disable --now promo-pdf.service || true
+fi
+if [[ -f /etc/systemd/system/promo-pdf.service ]]; then
+    rm -f /etc/systemd/system/promo-pdf.service
+    systemctl daemon-reload
+fi
 
 echo "Configurando Caddy..."
 install -d -m 0755 /etc/caddy/sites.d
-install -m 0644 deploy/Caddyfile /etc/caddy/sites.d/promo-pdf.caddy
+sed \
+    -e "s|__APP_ROOT__|${APP_ROOT}|g" \
+    -e "s|__PHP_FPM_SOCK__|${PHP_FPM_SOCK}|g" \
+    deploy/Caddyfile > /etc/caddy/sites.d/promo-pdf.caddy
+chmod 0644 /etc/caddy/sites.d/promo-pdf.caddy
 systemctl reload caddy 2>/dev/null || systemctl restart caddy
 
-echo "Deploy concluído em ${RELEASE_DIR}."
+echo "Deploy PHP-FPM concluído em ${RELEASE_DIR}. Nenhum serviço Bun foi instalado ou reiniciado."
