@@ -20,13 +20,31 @@ recente de forma explícita, ou ser descartado em favor dela. O banco mantém as
 
 ```bash
 vp install
+composer install
 bun run db:migrate -- --name init
 bun run db:seed
 bunx playwright install chromium
-bun run dev
+vp dev
 ```
 
-Abra `http://localhost:5199`. O frontend usa a porta 5199 e a API Bun, a porta 3001.
+Abra `http://localhost:5199`. O `vp dev` inicia o Vite com HMR na porta 5199 e o servidor PHP
+embutido na porta 3001; o proxy do Vite encaminha `/api` e `/uploads` para o PHP, como em produção.
+O endereço usado pelo gerador de PDF permanece o Vite (`http://127.0.0.1:5199`), para que a prévia
+use os assets atuais durante o desenvolvimento.
+
+### Testes E2E
+
+Os testes usam Pest 5 e o Browser Plugin. Eles iniciam o `vp dev`, exercitam o endpoint PHP com uma
+resposta PDF real e também clicam em `Gerar PDF` no navegador:
+
+```bash
+composer install
+bunx playwright install chromium
+vp run test:e2e
+```
+
+O teste pode receber uma URL diferente com `E2E_APP_URL`; por padrão usa o servidor local em `5199`.
+O deploy não executa essa suíte: ela deve rodar no CI antes da publicação.
 
 ### Testar a versão PHP-FPM localmente
 

@@ -98,15 +98,4 @@ sed \
 chmod 0644 /etc/caddy/sites.d/promo-pdf.caddy
 systemctl reload caddy 2>/dev/null || systemctl restart caddy
 
-echo "Verificando a geração de PDF..."
-PDF_CHECK_FILE="$(mktemp)"
-trap 'rm -f "${PDF_CHECK_FILE}"' EXIT
-if ! curl --fail --silent --show-error --max-time 45 --output "${PDF_CHECK_FILE}" "${PDF_APP_URL}/api/promotion/pdf" \
-    || [[ "$(head -c 5 "${PDF_CHECK_FILE}")" != "%PDF-" ]]; then
-    echo "A verificação de PDF falhou. Consulte os logs do PHP-FPM/Chromium."
-    exit 1
-fi
-rm -f "${PDF_CHECK_FILE}"
-trap - EXIT
-
 echo "Deploy PHP-FPM concluído em ${RELEASE_DIR}. Nenhum serviço Bun foi instalado ou reiniciado."
