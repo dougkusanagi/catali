@@ -18,6 +18,7 @@ test('a user can generate a PDF from the editor', function () {
                     size: bytes.length,
                     prefix: String.fromCharCode(...bytes.slice(0, 5)),
                 };
+                await new Promise(resolve => setTimeout(resolve, 500));
             }
             return response;
         };
@@ -34,6 +35,8 @@ test('a user can generate a PDF from the editor', function () {
         ->assertValue('.price-input input', '100,00')
         ->assertButtonEnabled('Gerar PDF')
         ->click('Gerar PDF')
+        ->assertSee('Gerando')
+        ->assertVisible('@pdf-spinner')
         ->assertSee('PDF gerado e baixado.')
         ->assertNoJavaScriptErrors();
 

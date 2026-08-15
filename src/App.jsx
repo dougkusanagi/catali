@@ -877,7 +877,11 @@ function App() {
             onClick={generatePdf}
             disabled={status === "saving" || status === "pdf" || Boolean(conflictPromotion)}
           >
-            {status === "pdf" ? <ArrowDown className="spin" size={18} /> : <Download size={18} />}{" "}
+            {status === "pdf" ? (
+              <LoaderCircle className="spin" data-testid="pdf-spinner" size={18} />
+            ) : (
+              <Download size={18} />
+            )}{" "}
             {status === "pdf" ? "Gerando" : "Gerar PDF"}
           </button>
         </div>
