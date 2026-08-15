@@ -26,7 +26,7 @@ test('a user can generate a PDF from the editor', function () {
     $page
         ->assertSee('Gerar PDF')
         ->assertButtonEnabled('Gerar PDF')
-        ->attach('input[type="file"]:not([capture])', $fixture)
+        ->attach('input[aria-label="file upload"]', $fixture)
         ->assertSee('Ajuste a imagem')
         ->assertButtonEnabled('Cortar e Salvar')
         ->click('Cortar e Salvar')
