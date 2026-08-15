@@ -1114,7 +1114,7 @@ function App() {
                       aria-label="Ver imagem em tamanho real"
                       title="Ver imagem"
                     >
-                      <Eye size={13} />
+                      <Eye size={18} />
                     </button>
                     <button
                       type="button"
@@ -1122,7 +1122,7 @@ function App() {
                       aria-label="Substituir imagem pela galeria"
                       title="Substituir pela galeria"
                     >
-                      <Upload size={13} />
+                      <Upload size={18} />
                     </button>
                     <button
                       type="button"
@@ -1130,7 +1130,7 @@ function App() {
                       aria-label="Tirar nova foto para substituir"
                       title="Tirar nova foto"
                     >
-                      <Camera size={13} />
+                      <Camera size={18} />
                     </button>
                   </div>
                 </div>
