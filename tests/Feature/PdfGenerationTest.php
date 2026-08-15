@@ -1,6 +1,6 @@
 <?php
 
-test('the PHP endpoint returns a real PDF', function () {
+test('the Laravel endpoint returns a real PDF', function () {
     $url = rtrim(getenv('PDF_TEST_URL') ?: (getenv('E2E_APP_URL') ?: 'http://127.0.0.1:5199'), '/').'/api/promotion/pdf';
     $context = stream_context_create([
         'http' => [

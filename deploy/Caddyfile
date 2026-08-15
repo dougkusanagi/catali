@@ -3,15 +3,19 @@ promo-pdf.cronicasjeans.com.br {
     root * __APP_ROOT__/dist
 
     route {
-        handle_path /api/* {
-            root * __APP_ROOT__/php
-            rewrite * /index.php?route=/api{http.request.uri.path}
+        handle /api/* {
+            root * __APP_ROOT__/public
             php_fastcgi unix/__PHP_FPM_SOCK__
         }
 
         handle_path /uploads/* {
             root * __APP_ROOT__/storage/uploads
             file_server
+        }
+
+        handle /up {
+            root * __APP_ROOT__/public
+            php_fastcgi unix/__PHP_FPM_SOCK__
         }
 
         try_files {path} /index.html

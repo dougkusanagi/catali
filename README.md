@@ -1,77 +1,85 @@
 # Gerador de promoções Crônicas
 
-Editor React/Vite+ para montar promoções com fotos e preços de atacado, salvar em SQLite e baixar em PDF.
+MVP SaaS mobile-first para uma loja criar, reutilizar e exportar promoções com sua própria identidade.
+O frontend é React/Vite+ e o backend foi migrado para Laravel 13, com Eloquent e SQLite no desenvolvimento.
 
-Cada foto adicionada cria um novo produto. O PDF mantém os produtos em uma grade fixa de duas colunas,
-com até 6 produtos por página; acima disso, novas páginas são criadas automaticamente (limite de 24
-produtos por promoção). É possível escolher uma imagem pela galeria, tirar uma foto ou arrastá-la para
-a área de produtos no desktop; no celular, toque nessa mesma área para abrir a galeria.
+O MVP inclui:
 
-No editor de imagem, o zoom é feito com a pinça no celular (ou com o gesto equivalente no trackpad),
-sem um limite artificial. A prévia A4 se ajusta à largura disponível e pode ser ampliada pelos controles
-de zoom para conferir detalhes mantendo a mesma proporção do PDF final.
+- perfil da loja com nome, logo, tema e paleta padrão;
+- múltiplas promoções com rascunho, publicação, encerramento, arquivamento e duplicação;
+- páginas com grids `classic`, `feature-left` e `feature-top`;
+- editor de fotos, nomes opcionais, destaque de produto e controle de versão por promoção;
+- PDF completo, JPG por página, capa vertical 4:5 e histórico de exports;
+- migração compatível com o SQLite usado pela versão anterior, sem perder promoções ou produtos.
 
-O editor aceita mais de uma pessoa na mesma promoção sem contas ou cadastro. O salvamento usa controle
-de versão otimista: se outra pessoa salvar enquanto você edita, o banco recusa a gravação desatualizada,
-preserva o rascunho no navegador e mostra as divergências. O rascunho pode então substituir a versão mais
-recente de forma explícita, ou ser descartado em favor dela. O banco mantém as últimas 10 versões salvas.
+## Executar localmente
 
-## Executar
-
-```bash
-vp install
-composer install
-bun run db:migrate -- --name init
-bun run db:seed
-bunx playwright install chromium
-vp dev
-```
-
-Abra `http://localhost:5199`. O `vp dev` inicia o Vite com HMR na porta 5199 e o servidor PHP
-embutido na porta 3001; o proxy do Vite encaminha `/api` e `/uploads` para o PHP, como em produção.
-O endereço usado pelo gerador de PDF permanece o Vite (`http://127.0.0.1:5199`), para que a prévia
-use os assets atuais durante o desenvolvimento.
-
-### Testes E2E
-
-Os testes usam Pest 5 e o Browser Plugin. Eles iniciam o `vp dev`, exercitam o endpoint PHP com uma
-resposta PDF real e também clicam em `Gerar PDF` no navegador:
+Requisitos: PHP 8.4+, Composer, Bun/Vite+, Node/Bun e Chromium do Playwright.
 
 ```bash
 composer install
+vp install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate --seed
 bunx playwright install chromium
-vp run test:e2e
+vp dev --host 0.0.0.0 --port 5199
 ```
 
-O teste pode receber uma URL diferente com `E2E_APP_URL`; por padrão usa o servidor local em `5199`.
-O deploy não executa essa suíte: ela deve rodar no CI antes da publicação.
+Abra `http://localhost:5199`. O `vp dev` inicia o Vite com HMR na porta 5199 e o Laravel em uma
+porta auxiliar (3001 por padrão). O proxy encaminha `/api` e `/uploads` para o Laravel.
 
-### Testar a versão PHP-FPM localmente
+Para uma instalação já existente, `php artisan migrate --force` executa a migration Laravel e adapta
+as tabelas legadas `Store`, `Promotion`, `Product`, `PromotionPage`, `PromotionHistory` e
+`PromotionExport`. A primeira promoção e a loja padrão são garantidas por `php artisan db:seed`.
 
-O backend PHP usa o mesmo SQLite e os mesmos endpoints do frontend. Gere os assets e suba o
-servidor embutido do PHP:
+## Contratos de API
+
+Os endpoints principais são:
+
+```text
+GET/PUT  /api/store
+GET/POST /api/promotions
+GET/PUT/DELETE /api/promotions/:id
+POST     /api/promotions/:id/duplicate
+PATCH    /api/promotions/:id/status
+GET      /api/promotions/:id/history
+GET      /api/promotions/:id/exports
+GET      /api/promotions/:id/pdf
+GET      /api/promotions/:id/exports/jpg?page=1
+GET      /api/promotions/:id/exports/cover
+POST     /api/uploads
+```
+
+Os aliases `/api/promotion`, `/api/promotion/history` e `/api/promotion/pdf` continuam disponíveis
+para clientes antigos do editor.
+
+## Testes
 
 ```bash
+composer install
 vp install
-vp build
-php php/migrate.php
-PHP_CLI_SERVER_WORKERS=4 php -S 127.0.0.1:8080 php/router.php
+bunx playwright install chromium
+E2E_VITE_PORT=5299 E2E_PHP_PORT=5301 ./scripts/test-e2e.sh
+./vendor/bin/pest tests/Unit --no-coverage
 ```
 
-Abra `http://127.0.0.1:8080`. Para gerar PDF localmente, instale o Chromium do Playwright (`bunx
-playwright install chromium`) e deixe Node/Bun disponível para o processo pontual de renderização.
-O endpoint PHP usa `page.pdf` com as mesmas opções do backend original; nenhum serviço Bun fica
-rodando entre as requisições.
+O script E2E cria um banco SQLite temporário, executa migrations e seeders Laravel, sobe Vite +
+Laravel e valida PDF e a jornada de upload/salvamento/exportação no navegador. As portas podem ser
+omitidas quando 5199/3001 estiverem livres.
 
 ## Produção
 
-O deploy PHP-FPM não instala nem mantém um serviço Bun. O Caddy serve o frontend estático, encaminha
-`/api/*` para o socket do PHP-FPM e serve as imagens de `storage/uploads`:
+O deploy usa Caddy + PHP-FPM e serve o frontend estático em `dist`, o entrypoint Laravel em `public`
+e os uploads diretamente de `storage/uploads`:
 
 ```bash
 sudo bash deploy.sh
 ```
 
-Defina `PHP_FPM_SOCK` se houver mais de uma versão do PHP instalada. Se Node/Bun ou o Chromium não
-estiverem em um caminho padrão, defina `PDF_RUNTIME_BIN` ou `CHROMIUM_BIN`. O banco fica em
-`storage/database.db` e as imagens em `storage/uploads`; ambos devem ser incluídos em sua rotina de backup.
+O script instala Composer e frontend, gera `APP_KEY` quando necessário, executa
+`php artisan migrate --force` e `php artisan db:seed --force`, prepara o Chromium para exportações e
+configura `deploy/Caddyfile`. Defina `PHP_FPM_SOCK` se houver mais de uma versão do PHP instalada.
+
+O banco SQLite fica em `storage/database.db`, os uploads em `storage/uploads` e os exports em
+`storage/exports`; todos devem entrar na rotina de backup.

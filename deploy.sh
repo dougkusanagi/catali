@@ -37,22 +37,35 @@ if ! command -v php >/dev/null 2>&1; then
     exit 1
 fi
 
-echo "Instalando dependências..."
+echo "Instalando dependências PHP e frontend..."
+COMPOSER_ALLOW_SUPERUSER=1 composer install --no-interaction --prefer-dist --no-dev --optimize-autoloader
 vp install --frozen-lockfile
 
-echo "Preparando banco SQLite..."
-mkdir -p storage/uploads storage/temp
-chown -R www-data:www-data storage
+echo "Preparando Laravel e banco SQLite..."
+mkdir -p storage/uploads storage/temp storage/exports storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache
+chown -R www-data:www-data storage bootstrap/cache
 if [[ ! -f .env ]]; then
     cat > .env <<'EOF'
-DATABASE_URL="file:./storage/database.db"
+APP_NAME="Gerador de promoções Crônicas"
+APP_ENV=production
+APP_DEBUG=false
+APP_KEY=
+APP_URL="https://promo-pdf.cronicasjeans.com.br"
+APP_TIMEZONE="America/Sao_Paulo"
+DB_CONNECTION=sqlite
+DB_DATABASE="storage/database.db"
+FILESYSTEM_DISK=local
 PDF_APP_URL="https://promo-pdf.cronicasjeans.com.br"
 EOF
     chmod 0640 .env
 fi
 chown root:www-data .env
 chmod 0640 .env
-php php/migrate.php
+if ! grep -q '^APP_KEY=base64:' .env; then
+    php artisan key:generate --force
+fi
+php artisan migrate --force
+php artisan db:seed --force
 
 CHROMIUM_BIN="${CHROMIUM_BIN:-}"
 if [[ -z "${CHROMIUM_BIN}" && -d /var/www/.cache/ms-playwright ]]; then
@@ -98,4 +111,4 @@ sed \
 chmod 0644 /etc/caddy/sites.d/promo-pdf.caddy
 systemctl reload caddy 2>/dev/null || systemctl restart caddy
 
-echo "Deploy PHP-FPM concluído em ${RELEASE_DIR}. Nenhum serviço Bun foi instalado ou reiniciado."
+echo "Deploy Laravel/PHP-FPM concluído em ${RELEASE_DIR}. Nenhum serviço Bun foi instalado ou reiniciado."

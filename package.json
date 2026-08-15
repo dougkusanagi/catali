@@ -11,19 +11,15 @@
     "check:pdf": "bash ./scripts/check-pdf.sh",
     "test:e2e": "bash ./scripts/test-e2e.sh",
     "preview": "vp preview",
-    "db:migrate": "bunx --bun prisma migrate dev",
-    "db:generate": "bunx --bun prisma generate",
-    "db:seed": "bun prisma/seed.js"
+    "db:migrate": "php artisan migrate",
+    "db:seed": "php artisan db:seed",
+    "laravel:key": "php artisan key:generate"
   },
   "dependencies": {
     "@fontsource/archivo-black": "^5.3.0",
     "@fontsource/barlow-condensed": "^5.3.0",
-    "@libsql/client": "^0.17.4",
-    "@prisma/adapter-libsql": "^7.9.1",
-    "@prisma/client": "^7.9.1",
     "@tailwindcss/vite": "^4.3.3",
     "concurrently": "^10.0.4",
-    "hono": "^4.13.2",
     "lucide-react": "^1.31.0",
     "playwright": "^1.62.1",
     "react": "^19.2.8",
@@ -39,7 +35,6 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
-    "prisma": "^7.9.1",
     "vite": "npm:@voidzero-dev/vite-plus-core@0.2.9",
     "vite-plus": "0.2.9"
   },
