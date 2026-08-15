@@ -8,6 +8,7 @@ import {
   Camera,
   Check,
   Download,
+  Eye,
   FlipHorizontal2,
   FlipVertical2,
   ImagePlus,
@@ -19,6 +20,7 @@ import {
   Sparkles,
   Trash2,
   Undo2,
+  Upload,
   ZoomIn,
   ZoomOut,
   X,
@@ -39,7 +41,9 @@ const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL
 const isPrintMode = new URLSearchParams(window.location.search).has("print");
 const PRODUCTS_PER_PAGE = 6;
 const MAX_PRODUCTS = 24;
-const PRODUCT_IMAGE_ASPECT = 1.42;
+const PRODUCT_IMAGE_ASPECT = 1;
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
+const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const DRAFT_STORAGE_KEY = "cronicas-promo-draft";
 const TAB_ID_STORAGE_KEY = "cronicas-promo-tab-id";
 
@@ -360,6 +364,35 @@ function ImageEditor({ source, onCancel, onDone, onRetake }) {
   );
 }
 
+function ImagePreviewModal({ source, onClose }) {
+  useEffect(() => {
+    function handleKeyDown(event) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div
+      className="modal-backdrop image-preview-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Visualizar imagem do produto"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section className="image-preview-dialog">
+        <button className="image-preview-close" type="button" onClick={onClose} aria-label="Fechar">
+          <X size={18} />
+        </button>
+        <img src={source} alt="Produto em tamanho real" />
+      </section>
+    </div>
+  );
+}
+
 function PromoPage({ promotion, products, pageNumber, totalPages }) {
   return (
     <article className="promo-page">
@@ -518,8 +551,13 @@ function PromoPreview({ promotion }) {
 
 function App() {
   const cameraInputRef = useRef(null);
+  const replaceImageInputRef = useRef(null);
+  const replaceCameraInputRef = useRef(null);
+  const replaceProductIdRef = useRef(null);
   const [promotion, setPromotion] = useState(emptyPromotion);
   const [editorSource, setEditorSource] = useState(null);
+  const [editorTargetProductId, setEditorTargetProductId] = useState(null);
+  const [imagePreviewSource, setImagePreviewSource] = useState(null);
   const [status, setStatus] = useState("loading");
   const [message, setMessage] = useState("");
   const [dirty, setDirty] = useState(false);
@@ -559,6 +597,18 @@ function App() {
     setStatus("ready");
   }
 
+  const startImageEditor = useCallback((file, targetProductId = null) => {
+    if (!SUPPORTED_IMAGE_TYPES.has(file.type) || file.size > MAX_IMAGE_SIZE) {
+      setStatus("error");
+      setMessage("Use JPG, PNG ou WebP com até 10 MB.");
+      return;
+    }
+    setEditorTargetProductId(targetProductId);
+    setEditorSource(URL.createObjectURL(file));
+    setMessage("");
+    setStatus("ready");
+  }, []);
+
   const onDrop = useCallback(
     (acceptedFiles, fileRejections) => {
       if (fileRejections.length > 0) {
@@ -573,11 +623,9 @@ function App() {
       }
       const file = acceptedFiles[0];
       if (!file) return;
-      setEditorSource(URL.createObjectURL(file));
-      setMessage("");
-      setStatus("ready");
+      startImageEditor(file);
     },
-    [promotion.products.length],
+    [promotion.products.length, startImageEditor],
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -685,37 +733,87 @@ function App() {
       setStatus("error");
       setMessage(`O limite é de ${MAX_PRODUCTS} produtos por promoção.`);
     } else if (file) {
-      setEditorSource(URL.createObjectURL(file));
-      setMessage("");
+      startImageEditor(file);
     }
     event.target.value = "";
   }
 
+  function closeImageEditor() {
+    setEditorSource(null);
+    setEditorTargetProductId(null);
+  }
+
+  function openReplacementInput(productId, inputRef) {
+    replaceProductIdRef.current = productId;
+    inputRef.current?.click();
+  }
+
+  function handleReplacementFile(event) {
+    const file = event.target.files?.[0];
+    const productId = replaceProductIdRef.current;
+    if (file && productId !== null) startImageEditor(file, productId);
+    event.target.value = "";
+  }
+
+  function retakeImage() {
+    const targetProductId = editorTargetProductId;
+    closeImageEditor();
+    window.setTimeout(() => {
+      if (targetProductId === null) {
+        cameraInputRef.current?.click();
+        return;
+      }
+      replaceProductIdRef.current = targetProductId;
+      replaceCameraInputRef.current?.click();
+    }, 0);
+  }
+
   async function uploadEditedImage(file) {
-    if (promotion.products.length >= MAX_PRODUCTS) {
+    const targetProductId = editorTargetProductId;
+    if (targetProductId === null && promotion.products.length >= MAX_PRODUCTS) {
       setStatus("error");
       setMessage(`O limite é de ${MAX_PRODUCTS} produtos por promoção.`);
-      setEditorSource(null);
+      closeImageEditor();
       return;
     }
-    const body = new FormData();
-    body.append("image", file);
-    const response = await fetch("/api/uploads", { method: "POST", body });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error);
-    markDraft((current) => ({
-      ...current,
-      products: [
-        ...current.products,
-        {
-          id: createDraftId(),
-          imagePath: data.path,
-          wholesalePriceCents: 0,
-          position: current.products.length,
-        },
-      ],
-    }));
-    setEditorSource(null);
+    try {
+      const body = new FormData();
+      body.append("image", file);
+      const response = await fetch("/api/uploads", { method: "POST", body });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível enviar a imagem.");
+
+      if (targetProductId === null) {
+        markDraft((current) => ({
+          ...current,
+          products: [
+            ...current.products,
+            {
+              id: createDraftId(),
+              imagePath: data.path,
+              wholesalePriceCents: 0,
+              position: current.products.length,
+            },
+          ],
+        }));
+      } else {
+        if (!promotion.products.some((product) => product.id === targetProductId)) {
+          setStatus("error");
+          setMessage("Esse produto não está mais disponível para substituição.");
+          return;
+        }
+        markDraft((current) => ({
+          ...current,
+          products: current.products.map((product) =>
+            product.id === targetProductId ? { ...product, imagePath: data.path } : product,
+          ),
+        }));
+      }
+      closeImageEditor();
+    } catch (error) {
+      setStatus("error");
+      setMessage(error instanceof Error ? error.message : "Não foi possível enviar a imagem.");
+    }
   }
 
   function updateProduct(index, changes) {
@@ -738,6 +836,16 @@ function App() {
         products: products.map((product, position) => ({ ...product, position })),
       };
     });
+  }
+
+  function removeProduct(index) {
+    if (!window.confirm("Tem certeza de que deseja remover este produto?")) return;
+    markDraft((current) => ({
+      ...current,
+      products: current.products
+        .filter((_, itemIndex) => itemIndex !== index)
+        .map((product, position) => ({ ...product, position })),
+    }));
   }
 
   async function savePromotion(
@@ -963,6 +1071,21 @@ function App() {
             capture="environment"
             onChange={selectFile}
           />
+          <input
+            ref={replaceImageInputRef}
+            hidden
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={handleReplacementFile}
+          />
+          <input
+            ref={replaceCameraInputRef}
+            hidden
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handleReplacementFile}
+          />
           <div
             {...getRootProps({
               className: `drop-zone ${isDragActive ? "is-dragging" : ""}`,
@@ -986,7 +1109,35 @@ function App() {
             {promotion.products.map((product, index) => (
               <div className="product-row" key={product.id}>
                 <span className="product-index">{String(index + 1).padStart(2, "0")}</span>
-                <img src={product.imagePath} alt="Produto" />
+                <div className="product-thumbnail">
+                  <img src={product.imagePath} alt="Produto" />
+                  <div className="product-thumbnail-actions" aria-label="Ações da imagem">
+                    <button
+                      type="button"
+                      onClick={() => setImagePreviewSource(product.imagePath)}
+                      aria-label="Ver imagem em tamanho real"
+                      title="Ver imagem"
+                    >
+                      <Eye size={18} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openReplacementInput(product.id, replaceImageInputRef)}
+                      aria-label="Substituir imagem pela galeria"
+                      title="Substituir pela galeria"
+                    >
+                      <Upload size={18} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openReplacementInput(product.id, replaceCameraInputRef)}
+                      aria-label="Tirar nova foto para substituir"
+                      title="Tirar nova foto"
+                    >
+                      <Camera size={18} />
+                    </button>
+                  </div>
+                </div>
                 <label>
                   <span>Preço de atacado</span>
                   <div className="price-input">
@@ -1022,13 +1173,9 @@ function App() {
                     <ArrowDown size={15} />
                   </button>
                   <button
+                    type="button"
                     className="danger"
-                    onClick={() =>
-                      markDraft({
-                        ...promotion,
-                        products: promotion.products.filter((_, itemIndex) => itemIndex !== index),
-                      })
-                    }
+                    onClick={() => removeProduct(index)}
                     aria-label="Excluir"
                   >
                     <Trash2 size={15} />
@@ -1067,12 +1214,15 @@ function App() {
       {editorSource && (
         <ImageEditor
           source={editorSource}
-          onCancel={() => setEditorSource(null)}
+          onCancel={closeImageEditor}
           onDone={uploadEditedImage}
-          onRetake={() => {
-            setEditorSource(null);
-            window.setTimeout(() => cameraInputRef.current?.click(), 0);
-          }}
+          onRetake={retakeImage}
+        />
+      )}
+      {imagePreviewSource && (
+        <ImagePreviewModal
+          source={imagePreviewSource}
+          onClose={() => setImagePreviewSource(null)}
         />
       )}
       {conflictPromotion && conflictDialogOpen && (
