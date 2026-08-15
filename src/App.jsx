@@ -44,6 +44,7 @@ const MAX_PRODUCTS = 24;
 const PRODUCT_IMAGE_ASPECT = 1;
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const PRICE_REQUIRED_MESSAGE = "Preencha o preço de atacado de todos os produtos.";
 const DRAFT_STORAGE_KEY = "cronicas-promo-draft";
 const TAB_ID_STORAGE_KEY = "cronicas-promo-tab-id";
 
@@ -59,6 +60,20 @@ function formatCentsInput(value) {
   const integerPart = normalized.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 
   return `${integerPart},${normalized.slice(-2)}`;
+}
+
+async function fetchJsonWithRetry(url, options, attempts = 2) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch(url, options);
+      return { response, data: await response.json() };
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts) await new Promise((resolve) => window.setTimeout(resolve, 350));
+    }
+  }
+  throw lastError;
 }
 
 function createDraftId() {
@@ -560,6 +575,7 @@ function App() {
   const [imagePreviewSource, setImagePreviewSource] = useState(null);
   const [status, setStatus] = useState("loading");
   const [message, setMessage] = useState("");
+  const [showPriceErrors, setShowPriceErrors] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [remoteUpdate, setRemoteUpdate] = useState(null);
   const [conflictPromotion, setConflictPromotion] = useState(null);
@@ -575,6 +591,14 @@ function App() {
   useEffect(() => {
     dirtyRef.current = dirty;
   }, [dirty]);
+
+  useEffect(() => {
+    if (showPriceErrors && promotion.products.every((product) => product.wholesalePriceCents > 0)) {
+      setShowPriceErrors(false);
+      setStatus((current) => (current === "error" ? "ready" : current));
+      setMessage((current) => (current === PRICE_REQUIRED_MESSAGE ? "" : current));
+    }
+  }, [promotion.products, showPriceErrors]);
 
   function markDraft(updater) {
     dirtyRef.current = true;
@@ -861,7 +885,9 @@ function App() {
       return false;
     }
     if (promotion.products.some((product) => product.wholesalePriceCents <= 0)) {
-      setMessage("Preencha o preço de atacado de todos os produtos.");
+      setShowPriceErrors(true);
+      setStatus("error");
+      setMessage(PRICE_REQUIRED_MESSAGE);
       return false;
     }
     setStatus(operation === "pdf" ? "pdf" : "saving");
@@ -881,12 +907,11 @@ function App() {
     let response;
     let data;
     try {
-      response = await fetch("/api/promotion", {
+      ({ response, data } = await fetchJsonWithRetry("/api/promotion", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-      });
-      data = await response.json();
+      }));
     } catch {
       setStatus("error");
       setMessage("Não foi possível conectar ao servidor para salvar.");
@@ -936,21 +961,31 @@ function App() {
     const saved = await savePromotion(false, "pdf");
     if (!saved) return;
     setStatus("pdf");
-    const response = await fetch("/api/promotion/pdf");
-    if (!response.ok) {
-      const data = await response.json();
+    try {
+      const response = await fetch("/api/promotion/pdf");
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || "Não foi possível gerar o PDF.");
+      }
+      const blob = await response.blob();
+      if (blob.size === 0 || !blob.type.includes("pdf")) {
+        throw new Error("O servidor não retornou um PDF válido.");
+      }
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "promocao-cronicas.pdf";
+      document.body.appendChild(link);
+      link.click();
+      window.setTimeout(() => {
+        URL.revokeObjectURL(link.href);
+        link.remove();
+      }, 0);
+      setStatus("ready");
+      setMessage("PDF gerado e baixado.");
+    } catch (error) {
       setStatus("error");
-      setMessage(data.error);
-      return;
+      setMessage(error instanceof Error ? error.message : "Não foi possível gerar o PDF.");
     }
-    const blob = await response.blob();
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = "promocao-cronicas.pdf";
-    link.click();
-    URL.revokeObjectURL(link.href);
-    setStatus("ready");
-    setMessage("PDF gerado e baixado.");
   }
 
   if (isPrintMode) return <PromoDocument promotion={promotion} />;
@@ -985,7 +1020,11 @@ function App() {
             onClick={generatePdf}
             disabled={status === "saving" || status === "pdf" || Boolean(conflictPromotion)}
           >
-            {status === "pdf" ? <ArrowDown className="spin" size={18} /> : <Download size={18} />}{" "}
+            {status === "pdf" ? (
+              <LoaderCircle className="spin" data-testid="pdf-spinner" size={18} />
+            ) : (
+              <Download size={18} />
+            )}{" "}
             {status === "pdf" ? "Gerando" : "Gerar PDF"}
           </button>
         </div>
@@ -1102,83 +1141,92 @@ function App() {
             </div>
           </div>
           <div className="product-list">
-            {promotion.products.map((product, index) => (
-              <div className="product-row" key={product.id}>
-                <span className="product-index">{String(index + 1).padStart(2, "0")}</span>
-                <div className="product-thumbnail">
-                  <img src={product.imagePath} alt="Produto" />
-                  <div className="product-thumbnail-actions" aria-label="Ações da imagem">
+            {promotion.products.map((product, index) => {
+              const hasMissingPrice = showPriceErrors && product.wholesalePriceCents <= 0;
+              return (
+                <div
+                  className={`product-row ${hasMissingPrice ? "has-price-error" : ""}`}
+                  key={product.id}
+                >
+                  <span className="product-index">{String(index + 1).padStart(2, "0")}</span>
+                  <div className="product-thumbnail">
+                    <img src={product.imagePath} alt="Produto" />
+                    <div className="product-thumbnail-actions" aria-label="Ações da imagem">
+                      <button
+                        type="button"
+                        onClick={() => setImagePreviewSource(product.imagePath)}
+                        aria-label="Ver imagem em tamanho real"
+                        title="Ver imagem"
+                      >
+                        <Eye size={18} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openReplacementInput(product.id, replaceImageInputRef)}
+                        aria-label="Substituir imagem pela galeria"
+                        title="Substituir pela galeria"
+                      >
+                        <Upload size={18} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openReplacementInput(product.id, replaceCameraInputRef)}
+                        aria-label="Tirar nova foto para substituir"
+                        title="Tirar nova foto"
+                      >
+                        <Camera size={18} />
+                      </button>
+                    </div>
+                  </div>
+                  <label>
+                    <span>Preço de atacado</span>
+                    <div className={`price-input ${hasMissingPrice ? "has-error" : ""}`}>
+                      <b>R$</b>
+                      <NumberFormatBase
+                        inputMode="decimal"
+                        placeholder="0,00"
+                        aria-invalid={hasMissingPrice}
+                        value={
+                          product.wholesalePriceCents ? String(product.wholesalePriceCents) : ""
+                        }
+                        valueIsNumericString
+                        format={formatCentsInput}
+                        removeFormatting={(value) => String(value ?? "").replace(/\D/g, "")}
+                        onValueChange={({ value }) =>
+                          updateProduct(index, {
+                            wholesalePriceCents: Number(value) || 0,
+                          })
+                        }
+                      />
+                    </div>
+                  </label>
+                  <div className="row-actions">
                     <button
-                      type="button"
-                      onClick={() => setImagePreviewSource(product.imagePath)}
-                      aria-label="Ver imagem em tamanho real"
-                      title="Ver imagem"
+                      onClick={() => moveProduct(index, -1)}
+                      disabled={index === 0}
+                      aria-label="Subir"
                     >
-                      <Eye size={18} />
+                      <ArrowUp size={15} />
+                    </button>
+                    <button
+                      onClick={() => moveProduct(index, 1)}
+                      disabled={index === promotion.products.length - 1}
+                      aria-label="Descer"
+                    >
+                      <ArrowDown size={15} />
                     </button>
                     <button
                       type="button"
-                      onClick={() => openReplacementInput(product.id, replaceImageInputRef)}
-                      aria-label="Substituir imagem pela galeria"
-                      title="Substituir pela galeria"
+                      className="danger"
+                      onClick={() => removeProduct(index)}
+                      aria-label="Excluir"
                     >
-                      <Upload size={18} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openReplacementInput(product.id, replaceCameraInputRef)}
-                      aria-label="Tirar nova foto para substituir"
-                      title="Tirar nova foto"
-                    >
-                      <Camera size={18} />
+                      <Trash2 size={15} />
                     </button>
                   </div>
                 </div>
-                <label>
-                  <span>Preço de atacado</span>
-                  <div className="price-input">
-                    <b>R$</b>
-                    <NumberFormatBase
-                      inputMode="decimal"
-                      placeholder="0,00"
-                      value={product.wholesalePriceCents ? String(product.wholesalePriceCents) : ""}
-                      valueIsNumericString
-                      format={formatCentsInput}
-                      removeFormatting={(value) => String(value ?? "").replace(/\D/g, "")}
-                      onValueChange={({ value }) =>
-                        updateProduct(index, {
-                          wholesalePriceCents: Number(value) || 0,
-                        })
-                      }
-                    />
-                  </div>
-                </label>
-                <div className="row-actions">
-                  <button
-                    onClick={() => moveProduct(index, -1)}
-                    disabled={index === 0}
-                    aria-label="Subir"
-                  >
-                    <ArrowUp size={15} />
-                  </button>
-                  <button
-                    onClick={() => moveProduct(index, 1)}
-                    disabled={index === promotion.products.length - 1}
-                    aria-label="Descer"
-                  >
-                    <ArrowDown size={15} />
-                  </button>
-                  <button
-                    type="button"
-                    className="danger"
-                    onClick={() => removeProduct(index)}
-                    aria-label="Excluir"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           {remoteUpdate && (
             <div className="remote-update-message">
@@ -1194,7 +1242,7 @@ function App() {
               </button>
             </div>
           )}
-          {message && (
+          {message && status !== "error" && (
             <div
               className={`status-message ${status === "error" || status === "conflict" ? "error" : ""}`}
             >
@@ -1220,6 +1268,14 @@ function App() {
           source={imagePreviewSource}
           onClose={() => setImagePreviewSource(null)}
         />
+      )}
+      {status === "error" && message && (
+        <div className="toast toast-error" role="alert" data-testid="error-toast">
+          <span>{message}</span>
+          <button type="button" aria-label="Fechar aviso" onClick={() => setMessage("")}>
+            <X size={16} />
+          </button>
+        </div>
       )}
       {conflictPromotion && conflictDialogOpen && (
         <ConflictDialog

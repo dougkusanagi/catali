@@ -12,7 +12,9 @@ const browser = await chromium.launch({
 
 try {
   const page = await browser.newPage();
-  await page.goto(url, { waitUntil: "networkidle" });
+  // O Vite mantém o WebSocket de HMR aberto durante o desenvolvimento;
+  // a prontidão real da página é sinalizada pelo atributo printReady abaixo.
+  await page.goto(url, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => document.documentElement.dataset.printReady === "true");
   await page.evaluate(() => document.fonts.ready);
   await page.pdf({

@@ -239,6 +239,11 @@ button {
   border-radius: 5px;
   box-shadow: 0 2px 8px rgba(30, 24, 18, 0.04);
 }
+.product-row.has-price-error {
+  border-color: #e55045;
+  background: #fff9f8;
+  box-shadow: 0 0 0 2px rgba(229, 80, 69, 0.1);
+}
 .product-index {
   font-family: "Archivo Black";
   color: #b1a89d;
@@ -316,6 +321,14 @@ button {
   outline: none;
   font-size: 18px;
   font-weight: 700;
+}
+.price-input.has-error {
+  border-color: #e55045;
+  box-shadow: 0 0 0 3px rgba(229, 80, 69, 0.14);
+}
+.price-input.has-error b {
+  background: #fde6e3;
+  color: #a52318;
 }
 .row-actions {
   display: grid;
@@ -443,6 +456,39 @@ button {
   background: none;
   border: 0;
   color: inherit;
+}
+.toast {
+  position: fixed;
+  z-index: 100;
+  top: 20px;
+  right: 20px;
+  width: min(420px, calc(100vw - 40px));
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid #e55045;
+  border-left-width: 5px;
+  border-radius: 8px;
+  background: #fff8f7;
+  color: #8f2219;
+  box-shadow: 0 14px 34px rgba(55, 21, 17, 0.22);
+  font-weight: 700;
+}
+.toast button {
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+.toast button:hover,
+.toast button:focus-visible {
+  color: var(--red);
+  outline: none;
 }
 .preview-panel {
   position: sticky;

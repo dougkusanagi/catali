@@ -1,0 +1,11 @@
+{
+  "require-dev": {
+    "pestphp/pest": "^5",
+    "pestphp/pest-plugin-browser": "^5"
+  },
+  "config": {
+    "allow-plugins": {
+      "pestphp/pest-plugin": true
+    }
+  }
+}
