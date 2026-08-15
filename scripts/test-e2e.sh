@@ -3,6 +3,7 @@
 set -Eeuo pipefail
 
 dev_log="$(mktemp)"
+test_root="$(mktemp -d)"
 dev_pid=""
 cleanup() {
     if [[ -n "${dev_pid}" ]] && kill -0 "${dev_pid}" 2>/dev/null; then
@@ -10,10 +11,12 @@ cleanup() {
         wait "${dev_pid}" 2>/dev/null || true
     fi
     rm -f "${dev_log}"
+    rm -rf "${test_root}"
 }
 trap cleanup EXIT
 
-setsid "$(type -P vp)" dev --host 127.0.0.1 --port 5199 >"${dev_log}" 2>&1 &
+DATABASE_URL="file:${test_root}/database.db" \
+    setsid "$(type -P vp)" dev --host 127.0.0.1 --port 5199 >"${dev_log}" 2>&1 &
 dev_pid=$!
 
 for attempt in $(seq 1 60); do
