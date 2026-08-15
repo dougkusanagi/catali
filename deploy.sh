@@ -4,6 +4,7 @@ set -Eeuo pipefail
 
 APP_ROOT="${APP_ROOT:-/var/www/promo-pdf}"
 RELEASE_DIR="${APP_ROOT}/current"
+PDF_APP_URL="${PDF_APP_URL:-https://promo-pdf.cronicasjeans.com.br}"
 
 export PATH="/root/.vite-plus/bin:/root/.bun/bin:/usr/local/bin:${PATH}"
 
@@ -54,11 +55,12 @@ chmod 0640 .env
 php php/migrate.php
 
 CHROMIUM_BIN="${CHROMIUM_BIN:-}"
+if [[ -z "${CHROMIUM_BIN}" && -d /var/www/.cache/ms-playwright ]]; then
+    CHROMIUM_BIN="$(find /var/www/.cache/ms-playwright -type f -name chrome-headless-shell -perm -u+x -print -quit)"
+    CHROMIUM_BIN="${CHROMIUM_BIN:-$(find /var/www/.cache/ms-playwright -type f -name chrome -perm -u+x -print -quit)}"
+fi
 if [[ -z "${CHROMIUM_BIN}" ]]; then
     CHROMIUM_BIN="$(command -v chromium || command -v chromium-browser || command -v google-chrome || true)"
-fi
-if [[ -z "${CHROMIUM_BIN}" && -d /var/www/.cache/ms-playwright ]]; then
-    CHROMIUM_BIN="$(find /var/www/.cache/ms-playwright -type f \( -name chrome -o -name chrome-headless-shell \) -perm -u+x -print -quit)"
 fi
 if [[ -z "${CHROMIUM_BIN}" ]]; then
     echo "Chromium não encontrado. Defina CHROMIUM_BIN e execute o deploy novamente."
@@ -95,5 +97,16 @@ sed \
     deploy/Caddyfile > /etc/caddy/sites.d/promo-pdf.caddy
 chmod 0644 /etc/caddy/sites.d/promo-pdf.caddy
 systemctl reload caddy 2>/dev/null || systemctl restart caddy
+
+echo "Verificando a geração de PDF..."
+PDF_CHECK_FILE="$(mktemp)"
+trap 'rm -f "${PDF_CHECK_FILE}"' EXIT
+if ! curl --fail --silent --show-error --max-time 45 --output "${PDF_CHECK_FILE}" "${PDF_APP_URL}/api/promotion/pdf" \
+    || [[ "$(head -c 5 "${PDF_CHECK_FILE}")" != "%PDF-" ]]; then
+    echo "A verificação de PDF falhou. Consulte os logs do PHP-FPM/Chromium."
+    exit 1
+fi
+rm -f "${PDF_CHECK_FILE}"
+trap - EXIT
 
 echo "Deploy PHP-FPM concluído em ${RELEASE_DIR}. Nenhum serviço Bun foi instalado ou reiniciado."

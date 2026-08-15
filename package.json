@@ -11,6 +11,7 @@
     "build": "vp build",
     "lint": "vp lint",
     "check": "vp check",
+    "check:pdf": "bash ./scripts/check-pdf.sh",
     "preview": "vp preview",
     "db:migrate": "bunx --bun prisma migrate dev",
     "db:generate": "bunx --bun prisma generate",

@@ -315,18 +315,16 @@ function chromium_binary(): ?string
     $configured = env_value("CHROMIUM_BIN");
     if ($configured) $candidates[] = $configured;
     $candidates = array_merge($candidates, [
+        // O headless shell não inicializa o Crashpad e é mais confiável em PHP-FPM.
+        // Mantenha-o antes do Chrome completo quando ambos vierem do Playwright.
+        ...glob("/var/www/.cache/ms-playwright/*/chrome-headless-shell-linux64/chrome-headless-shell") ?: [],
         "/usr/bin/chromium",
         "/usr/bin/chromium-browser",
         "/usr/bin/google-chrome",
         "/usr/bin/google-chrome-stable",
+        ...glob("/var/www/.cache/ms-playwright/*/chrome-linux/chrome") ?: [],
+        ...glob("/var/www/.cache/ms-playwright/*/chrome-linux64/chrome") ?: [],
     ]);
-    foreach ([
-        "/var/www/.cache/ms-playwright/*/chrome-linux/chrome",
-        "/var/www/.cache/ms-playwright/*/chrome-linux64/chrome",
-        "/var/www/.cache/ms-playwright/*/chrome-headless-shell-linux64/chrome-headless-shell",
-    ] as $pattern) {
-        $candidates = array_merge($candidates, glob($pattern) ?: []);
-    }
     foreach ($candidates as $candidate) if (is_file($candidate) && is_executable($candidate)) return $candidate;
     return null;
 }
