@@ -633,15 +633,20 @@ button {
 .product-offer {
   position: relative;
   min-height: 0;
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  aspect-ratio: 1 / 1;
+  justify-self: center;
   background: rgba(255, 255, 255, 0.82);
   border: 0.55mm solid #1e1914;
   box-shadow: 2.2mm 2.2mm 0 var(--gold);
   overflow: hidden;
 }
 .product-photo {
-  width: auto;
+  width: 100%;
   height: 100%;
-  max-width: 100%;
+  max-width: none;
   aspect-ratio: 1 / 1;
   padding: 3mm;
   margin-inline: auto;
