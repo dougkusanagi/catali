@@ -62,6 +62,20 @@ function formatCentsInput(value) {
   return `${integerPart},${normalized.slice(-2)}`;
 }
 
+async function fetchJsonWithRetry(url, options, attempts = 2) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch(url, options);
+      return { response, data: await response.json() };
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts) await new Promise((resolve) => window.setTimeout(resolve, 350));
+    }
+  }
+  throw lastError;
+}
+
 function createDraftId() {
   return typeof globalThis.crypto?.randomUUID === "function"
     ? globalThis.crypto.randomUUID()
@@ -893,12 +907,11 @@ function App() {
     let response;
     let data;
     try {
-      response = await fetch("/api/promotion", {
+      ({ response, data } = await fetchJsonWithRetry("/api/promotion", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-      });
-      data = await response.json();
+      }));
     } catch {
       setStatus("error");
       setMessage("Não foi possível conectar ao servidor para salvar.");

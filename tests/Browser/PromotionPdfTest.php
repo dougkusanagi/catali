@@ -8,6 +8,7 @@ test('a user can generate a PDF from the editor', function () {
     $page->script(<<<'JS'
         window.__pdfTest = null;
         window.__pdfDownload = null;
+        window.__saveAttempts = 0;
         const originalFetch = window.fetch.bind(window);
         const originalAnchorClick = HTMLAnchorElement.prototype.click;
         HTMLAnchorElement.prototype.click = function (...args) {
@@ -21,6 +22,12 @@ test('a user can generate a PDF from the editor', function () {
             return originalAnchorClick.call(this, ...args);
         };
         window.fetch = async (...args) => {
+            if (String(args[0]).includes('/api/promotion') && args[1]?.method === 'PUT') {
+                window.__saveAttempts += 1;
+                if (window.__saveAttempts === 1) {
+                    throw new TypeError('Falha temporária simulada.');
+                }
+            }
             const response = await originalFetch(...args);
             if (String(args[0]).includes('/api/promotion/pdf')) {
                 const bytes = new Uint8Array(await response.clone().arrayBuffer());
@@ -72,4 +79,5 @@ test('a user can generate a PDF from the editor', function () {
         'download' => 'promocao-cronicas.pdf',
     ]);
     expect($download['href'] ?? '')->toStartWith('blob:');
+    expect($page->script('window.__saveAttempts'))->toBe(2);
 });
