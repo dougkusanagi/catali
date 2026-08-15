@@ -7,7 +7,19 @@ test('a user can generate a PDF from the editor', function () {
     $page = visit($url);
     $page->script(<<<'JS'
         window.__pdfTest = null;
+        window.__pdfDownload = null;
         const originalFetch = window.fetch.bind(window);
+        const originalAnchorClick = HTMLAnchorElement.prototype.click;
+        HTMLAnchorElement.prototype.click = function (...args) {
+            if (this.download === 'promocao-cronicas.pdf') {
+                window.__pdfDownload = {
+                    connected: document.body.contains(this),
+                    download: this.download,
+                    href: this.href,
+                };
+            }
+            return originalAnchorClick.call(this, ...args);
+        };
         window.fetch = async (...args) => {
             const response = await originalFetch(...args);
             if (String(args[0]).includes('/api/promotion/pdf')) {
@@ -47,4 +59,11 @@ test('a user can generate a PDF from the editor', function () {
         'prefix' => '%PDF-',
     ]);
     expect($pdf['size'] ?? 0)->toBeGreaterThan(1000);
+
+    $download = $page->script('window.__pdfDownload');
+    expect($download)->toMatchArray([
+        'connected' => true,
+        'download' => 'promocao-cronicas.pdf',
+    ]);
+    expect($download['href'] ?? '')->toStartWith('blob:');
 });

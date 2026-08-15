@@ -936,21 +936,31 @@ function App() {
     const saved = await savePromotion(false, "pdf");
     if (!saved) return;
     setStatus("pdf");
-    const response = await fetch("/api/promotion/pdf");
-    if (!response.ok) {
-      const data = await response.json();
+    try {
+      const response = await fetch("/api/promotion/pdf");
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || "Não foi possível gerar o PDF.");
+      }
+      const blob = await response.blob();
+      if (blob.size === 0 || !blob.type.includes("pdf")) {
+        throw new Error("O servidor não retornou um PDF válido.");
+      }
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "promocao-cronicas.pdf";
+      document.body.appendChild(link);
+      link.click();
+      window.setTimeout(() => {
+        URL.revokeObjectURL(link.href);
+        link.remove();
+      }, 0);
+      setStatus("ready");
+      setMessage("PDF gerado e baixado.");
+    } catch (error) {
       setStatus("error");
-      setMessage(data.error);
-      return;
+      setMessage(error instanceof Error ? error.message : "Não foi possível gerar o PDF.");
     }
-    const blob = await response.blob();
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = "promocao-cronicas.pdf";
-    link.click();
-    URL.revokeObjectURL(link.href);
-    setStatus("ready");
-    setMessage("PDF gerado e baixado.");
   }
 
   if (isPrintMode) return <PromoDocument promotion={promotion} />;
